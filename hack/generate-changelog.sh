@@ -543,14 +543,19 @@ EOF
     echo ""
     
     # Unreleased link
+    # According to Keep a Changelog: link should point to comparison between last release and HEAD
     if [ ${#tags[@]} -eq 0 ]; then
+        # No tags yet - link from first commit to HEAD
         first_commit=$(git rev-list --max-parents=0 HEAD 2>/dev/null | head -1 || echo "")
         if [ -n "$first_commit" ]; then
-            echo "[Unreleased]: ${REPO_URL}/compare/${first_commit}...HEAD"
+            # Use short hash for readability
+            first_commit_short=$(echo "$first_commit" | cut -c1-7)
+            echo "[Unreleased]: ${REPO_URL}/compare/${first_commit_short}...HEAD"
         else
             echo "[Unreleased]: ${REPO_URL}/compare/HEAD...HEAD"
         fi
     else
+        # Tags exist - link from last tag to HEAD
         last_tag="${tags[0]}"
         echo "[Unreleased]: ${REPO_URL}/compare/${last_tag}...HEAD"
     fi
