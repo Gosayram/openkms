@@ -36,10 +36,7 @@ COPY . .
 RUN \
   --mount=type=cache,target=/root/.cache/go-build \
   --mount=type=cache,target=/go/pkg \
-  GO_LDFLAGS="-X 'github.com/Gosayram/openkms/internal/version.Version=${VERSION}' \
-              -X 'github.com/Gosayram/openkms/internal/version.Commit=${COMMIT}' \
-              -X 'github.com/Gosayram/openkms/internal/version.Date=${DATE}' \
-              -s -w" \
+  GO_LDFLAGS="-X github.com/Gosayram/openkms/internal/version.Version=${VERSION} -X github.com/Gosayram/openkms/internal/version.Commit=${COMMIT} -X github.com/Gosayram/openkms/internal/version.Date=${DATE} -s -w" \
   go build -ldflags "${GO_LDFLAGS}" -trimpath -o /src/bin/openkms-server ./cmd/openkms-server && \
   go build -ldflags "${GO_LDFLAGS}" -trimpath -o /src/bin/openkms-cli ./cmd/openkms-cli
 
