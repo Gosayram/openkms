@@ -92,7 +92,7 @@ signs:
 binary_signs:
   - id: binaries
     artifacts: binary
-    signature: "${artifact}.${os}.${arch}.sig"
+    signature: "{{ .ArtifactName }}_{{ .Os }}_{{ .Arch }}{{ if .Arm }}v{{ .Arm }}{{ end }}.sig"
     cmd: gpg
     args:
       - "--batch"
@@ -100,9 +100,9 @@ binary_signs:
       - "--passphrase={{ .Env.GPG_PASSPHRASE }}"
       - "--default-key={{ .Env.GPG_FINGERPRINT }}"
       - "--output"
-      - "${signature}"
+      - "{{ .Signature }}"
       - "--detach-sign"
-      - "${artifact}"
+      - "{{ .ArtifactPath }}"
 
 release:
   mode: replace
@@ -155,10 +155,10 @@ release:
 
     ```bash
     # For Linux amd64
-    gpg --verify openkms-server.linux.amd64.sig openkms-server
-    gpg --verify openkms-cli.linux.amd64.sig openkms-cli
+    gpg --verify openkms-server_linux_amd64.sig openkms-server
+    gpg --verify openkms-cli_linux_amd64.sig openkms-cli
     
-    # For other platforms, replace linux/amd64 with your platform (e.g., darwin/arm64, windows/amd64)
+    # For other platforms, replace linux_amd64 with your platform (e.g., darwin_arm64v8, windows_amd64)
     ```
   footer: |
     **Full Changelog**: https://github.com/Gosayram/openkms/compare/{{ .PreviousTag }}...{{ .Tag }}

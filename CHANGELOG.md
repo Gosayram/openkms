@@ -14,10 +14,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `Fixed` for any bug fixes.
 - `Security` in case of vulnerabilities.
 
+## [Unreleased]
+
+### Fixed
+- Template for binary files
+
 ## [0.3.1] - 2025-11-15
 
 ### Changed
-- Bump CHANGELOG
 - Bump release
 - Merge pull request #2 from Gosayram/fix/dependency_updates
 - Merge pull request #3 from Gosayram/fix/goreleaser
@@ -39,7 +43,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added changelog automation script and generate first CHANGELOG.md
 - Added release version and phase validation via arch-plan
 - Added script for updating all packages in Go
-- Bump CHANGELOG
 - Improve  changelog logic
 - Merge pull request #1 from Gosayram/feature/arch
 
