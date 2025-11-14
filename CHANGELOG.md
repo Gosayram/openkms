@@ -21,10 +21,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Initial commit
 
 ### Changed
+- Added auto-tag and push
 - Added changelog automation script and generate first CHANGELOG.md
 - Added release version and phase validation via arch-plan
 - Added script for updating all packages in Go
 - Improve  changelog logic
+
+### Fixed
+- Changelog mechanism for autogen
 
 
 [Unreleased]: https://github.com/Gosayram/openkms/compare/f505492...HEAD
