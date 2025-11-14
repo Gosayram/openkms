@@ -100,9 +100,9 @@ binary_signs:
       - "--passphrase={{ .Env.GPG_PASSPHRASE }}"
       - "--default-key={{ .Env.GPG_FINGERPRINT }}"
       - "--output"
-      - "{{ .Signature }}"
+      - "${signature}"
       - "--detach-sign"
-      - "{{ .ArtifactPath }}"
+      - "${artifact}"
 
 release:
   mode: replace
