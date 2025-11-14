@@ -160,11 +160,13 @@ get_commits() {
 }
 
 # Function to format version section
+# According to Keep a Changelog: every version should have an entry
 format_version_section() {
     local version="$1"
     local date="$2"
     local commits="$3"
     
+    # Always output version header with date (principle: entry for every version)
     echo "## [${version}] - ${date}"
     echo ""
     
@@ -179,6 +181,7 @@ format_version_section() {
     
     touch "$added_file" "$changed_file" "$deprecated_file" "$removed_file" "$fixed_file" "$security_file"
     
+    # Process commits and group by type
     while IFS='|' read -r hash date_str subject; do
         category=$(categorize_commit "$subject")
         if [ -z "$category" ]; then
@@ -210,6 +213,7 @@ format_version_section() {
     done <<< "$commits"
     
     # Output sections in order: Added, Changed, Deprecated, Removed, Fixed, Security
+    # (Keep a Changelog standard order)
     if [ -s "$added_file" ]; then
         echo "### Added"
         sort -u "$added_file" | while read -r item; do
@@ -289,6 +293,15 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## Types of changes
+
+- \`Added\` for new features.
+- \`Changed\` for changes in existing functionality.
+- \`Deprecated\` for soon-to-be removed features.
+- \`Removed\` for now removed features.
+- \`Fixed\` for any bug fixes.
+- \`Security\` in case of vulnerabilities.
 
 EOF
 
@@ -503,15 +516,16 @@ EOF
         fi
     fi
     
-    # Process each tag
+    # Process each tag (latest version comes first - Keep a Changelog principle)
     for i in "${!tags[@]}"; do
         tag="${tags[$i]}"
         tag_clean="${tag#v}"  # Remove 'v' prefix if present
         
-        # Get date for this tag
+        # Get date for this tag (release date displayed - Keep a Changelog principle)
         tag_date=$(get_tag_date "$tag")
         
         # Get commits for this version
+        # Every version should have an entry (Keep a Changelog principle)
         if [ $((i + 1)) -lt ${#tags[@]} ]; then
             # There's a next tag, get commits between this and next
             next_tag="${tags[$((i + 1))]}"
@@ -521,6 +535,7 @@ EOF
             commits=$(get_commits "" "$tag")
         fi
         
+        # Format version section (always outputs version header, even if no commits)
         format_version_section "$tag_clean" "$tag_date" "$commits"
     done
     
