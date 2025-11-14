@@ -1,5 +1,17 @@
 .PHONY: help build test fmt lint vet clean run deps tidy update install-tools check-all fix-all
 
+# Version information
+VERSION_FILE := .release-version
+VERSION := $(shell if [ -f $(VERSION_FILE) ]; then cat $(VERSION_FILE) | tr -d '[:space:]'; else echo "dev"; fi)
+COMMIT := $(shell git rev-parse --short HEAD 2>/dev/null || echo "unknown")
+DATE := $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
+
+# LDFLAGS for version injection
+LDFLAGS := -X 'github.com/Gosayram/openkms/internal/version.Version=$(VERSION)' \
+           -X 'github.com/Gosayram/openkms/internal/version.Commit=$(COMMIT)' \
+           -X 'github.com/Gosayram/openkms/internal/version.Date=$(DATE)' \
+           -s -w
+
 help: ## Show this help message
 	@echo 'Usage: make [target]'
 	@echo ''
@@ -7,10 +19,10 @@ help: ## Show this help message
 	@awk 'BEGIN {FS = ":.*?## "} /^[a-zA-Z_-]+:.*?## / {printf "  %-15s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
 
 build: ## Build the application
-	@echo "Building openkms-server..."
-	@go build -o bin/openkms-server ./cmd/openkms-server
-	@echo "Building openkms-cli..."
-	@go build -o bin/openkms-cli ./cmd/openkms-cli
+	@echo "Building openkms-server (version: $(VERSION), commit: $(COMMIT))..."
+	@go build -ldflags "$(LDFLAGS)" -trimpath -o bin/openkms-server ./cmd/openkms-server
+	@echo "Building openkms-cli (version: $(VERSION), commit: $(COMMIT))..."
+	@go build -ldflags "$(LDFLAGS)" -trimpath -o bin/openkms-cli ./cmd/openkms-cli
 
 test: ## Run tests
 	go test -v -race -coverprofile=coverage.out ./...
@@ -112,4 +124,7 @@ copyright-add: ## Add copyright headers to files
 
 copyright-update: ## Update copyright year
 	@./hack/update-copyright.sh
+
+update-version: ## Update version in .release-version based on current phase in .arch-plan-docs.md
+	@./hack/update-version.sh
 
