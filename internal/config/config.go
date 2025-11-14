@@ -61,9 +61,12 @@ type ServerConfig struct {
 
 // StorageConfig contains storage backend configuration
 type StorageConfig struct {
-	Type       string // "file", "boltdb", "postgres"
-	Path       string // for file/boltdb
-	Connection string // for postgres
+	Type           string        // "file", "boltdb", "postgres", "etcd"
+	Path           string        // for file/boltdb
+	Connection     string        // for postgres
+	Endpoints      []string      // for etcd (comma-separated endpoints)
+	DialTimeout    time.Duration // for etcd (default: 5s)
+	RequestTimeout time.Duration // for etcd (default: 3s)
 }
 
 // SecurityConfig contains security-related configuration
@@ -115,9 +118,12 @@ func Load() (*Config, error) {
 			RequireClientCert: getEnvBool("OPENKMS_TLS_REQUIRE_CLIENT_CERT", true),
 		},
 		Storage: StorageConfig{
-			Type:       getEnv("OPENKMS_STORAGE_TYPE", "boltdb"),
-			Path:       getEnv("OPENKMS_STORAGE_PATH", "./data/openkms.db"),
-			Connection: getEnv("OPENKMS_STORAGE_CONNECTION", ""),
+			Type:           getEnv("OPENKMS_STORAGE_TYPE", "boltdb"),
+			Path:           getEnv("OPENKMS_STORAGE_PATH", "./data/openkms.db"),
+			Connection:     getEnv("OPENKMS_STORAGE_CONNECTION", ""),
+			Endpoints:      getEnvSlice("OPENKMS_STORAGE_ETCD_ENDPOINTS", []string{"localhost:2379"}),
+			DialTimeout:    getEnvDuration("OPENKMS_STORAGE_ETCD_DIAL_TIMEOUT", 5*time.Second),
+			RequestTimeout: getEnvDuration("OPENKMS_STORAGE_ETCD_REQUEST_TIMEOUT", 3*time.Second),
 		},
 		Security: SecurityConfig{
 			MasterKeyProvider: getEnv("OPENKMS_MASTER_KEY_PROVIDER", "env"),
@@ -172,6 +178,12 @@ func (c *Config) Validate() error {
 
 	if c.Storage.Type == "" {
 		return fmt.Errorf("storage type not specified")
+	}
+
+	if c.Storage.Type == "etcd" {
+		if len(c.Storage.Endpoints) == 0 {
+			return fmt.Errorf("etcd storage type requires at least one endpoint")
+		}
 	}
 
 	if c.Security.MasterKeyProvider == "" {
