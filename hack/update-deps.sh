@@ -161,19 +161,56 @@ if command -v go >/dev/null 2>&1; then
     done < "${OLD_DEPS_MAP}"
 fi
 
+# Function to get module source URL
+# Tries multiple methods: pkg.go.dev API, heuristics, and fallback to pkg.go.dev
+get_module_source_url() {
+    local module="$1"
+    local url=""
+    
+    # Fast path: github.com modules can be directly converted
+    if [[ "$module" =~ ^github\.com/(.+)$ ]]; then
+        local repo="${BASH_REMATCH[1]}"
+        echo "https://github.com/${repo}"
+        return 0
+    fi
+    
+    # Try to get source URL from pkg.go.dev page (look for GitHub link)
+    # This is cached in a temp file to avoid multiple requests
+    local cache_file="${TMPDIR}/module_url_${module//\//_}"
+    if [ -f "${cache_file}" ]; then
+        url=$(cat "${cache_file}" 2>/dev/null || echo "")
+        if [ -n "${url}" ]; then
+            echo "${url}"
+            return 0
+        fi
+    fi
+    
+    # Try to extract GitHub URL from pkg.go.dev page
+    # Use timeout to avoid hanging on slow connections
+    if command -v curl >/dev/null 2>&1; then
+        url=$(curl -s --max-time 3 "https://pkg.go.dev/${module}?tab=overview" 2>/dev/null | \
+            grep -o 'href="https://github.com/[^"]*"' | head -1 | \
+            sed 's/href="//;s/"$//' || echo "")
+        
+        if [ -n "${url}" ]; then
+            echo "${url}" > "${cache_file}"
+            echo "${url}"
+            return 0
+        fi
+    fi
+    
+    # Fallback: use pkg.go.dev which will show the module page with source links
+    url="https://pkg.go.dev/${module}"
+    echo "${url}" > "${cache_file}"
+    echo "${url}"
+}
+
 # Function to format module link
 format_module_link() {
     local module="$1"
-    # Convert module path to GitHub URL if possible
-    if [[ "$module" =~ ^github\.com/(.+)$ ]]; then
-        local repo="${BASH_REMATCH[1]}"
-        echo "[\`${module}\`](https://${repo})"
-    elif [[ "$module" =~ ^golang\.org/x/(.+)$ ]]; then
-        local pkg="${BASH_REMATCH[1]}"
-        echo "[\`${module}\`](https://pkg.go.dev/${module})"
-    else
-        echo "\`${module}\`"
-    fi
+    local url
+    url=$(get_module_source_url "${module}")
+    echo "[\`${module}\`](${url})"
 }
 
 # Build commit message
