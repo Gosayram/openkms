@@ -16,7 +16,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- Bump release
+- Merge pull request #4 from Gosayram/fix/minor_bugs
+
 ### Fixed
+- Changelog generation exclude rules
 - Template for binary files
 
 ## [0.3.1] - 2025-11-15
