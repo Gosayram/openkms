@@ -16,6 +16,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- Merge pull request #2 from Gosayram/fix/dependency_updates
+- Merge pull request #3 from Gosayram/fix/goreleaser
+
+### Fixed
+- Hardcoded update-deps script for each package and repo
+- Package name conflicts
+
+## [0.3.0] - 2025-11-15
+
 ### Added
 - Bump release version and start phase 3
 - Implement 2 phase: enhanced feature implementation with architecture plan
@@ -29,9 +39,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added script for updating all packages in Go
 - Bump CHANGELOG
 - Improve  changelog logic
+- Merge pull request #1 from Gosayram/feature/arch
 
 ### Fixed
 - Changelog mechanism for autogen
 
 
-[Unreleased]: https://github.com/Gosayram/openkms/compare/f505492...HEAD
+[Unreleased]: https://github.com/Gosayram/openkms/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/Gosayram/openkms/compare/f505492a3c537cde34bba2964cffa56855efb52d...v0.3.0
