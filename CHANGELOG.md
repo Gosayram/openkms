@@ -14,9 +14,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `Fixed` for any bug fixes.
 - `Security` in case of vulnerabilities.
 
-## [Unreleased]
+## [0.3.1] - 2025-11-15
 
 ### Changed
+- Bump CHANGELOG
+- Bump release
 - Merge pull request #2 from Gosayram/fix/dependency_updates
 - Merge pull request #3 from Gosayram/fix/goreleaser
 
@@ -45,5 +47,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Changelog mechanism for autogen
 
 
-[Unreleased]: https://github.com/Gosayram/openkms/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/Gosayram/openkms/compare/v0.3.1...HEAD
+[0.3.1]: https://github.com/Gosayram/openkms/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/Gosayram/openkms/compare/f505492a3c537cde34bba2964cffa56855efb52d...v0.3.0
