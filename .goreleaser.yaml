@@ -92,7 +92,7 @@ signs:
 binary_signs:
   - id: binaries
     artifacts: binary
-    signature: "${artifact}.sig"
+    signature: "${artifact}.${os}.${arch}.sig"
     cmd: gpg
     args:
       - "--batch"
@@ -154,8 +154,11 @@ release:
     Verify binary signatures:
 
     ```bash
-    gpg --verify openkms-server{{ .Version }}*.sig openkms-server
-    gpg --verify openkms-cli{{ .Version }}*.sig openkms-cli
+    # For Linux amd64
+    gpg --verify openkms-server.linux.amd64.sig openkms-server
+    gpg --verify openkms-cli.linux.amd64.sig openkms-cli
+    
+    # For other platforms, replace linux/amd64 with your platform (e.g., darwin/arm64, windows/amd64)
     ```
   footer: |
     **Full Changelog**: https://github.com/Gosayram/openkms/compare/{{ .PreviousTag }}...{{ .Tag }}
