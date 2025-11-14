@@ -16,6 +16,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- Bump release
+- Merge pull request #6 from Gosayram/fix/builds
+
 ### Fixed
 - Metadata into cli for containers and added server slim version
 
