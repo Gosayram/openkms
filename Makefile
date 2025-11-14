@@ -1,4 +1,4 @@
-.PHONY: help build test fmt lint vet clean run deps tidy update install-tools check-all fix-all
+.PHONY: help build test fmt lint vet clean run deps tidy update install-tools check-all fix-all tag push-tag release
 
 # Version information
 VERSION_FILE := .release-version
@@ -127,4 +127,32 @@ update-version: ## Update version in .release-version based on current phase in 
 
 changelog: ## Generate CHANGELOG.md from git commits
 	@./hack/generate-changelog.sh
+
+tag: ## Create git tag from .release-version
+	@if [ ! -f $(VERSION_FILE) ]; then \
+		echo "Error: $(VERSION_FILE) not found"; \
+		exit 1; \
+	fi
+	@TAG_VERSION="v$(VERSION)"; \
+	if git rev-parse "$$TAG_VERSION" >/dev/null 2>&1; then \
+		echo "Error: Tag $$TAG_VERSION already exists"; \
+		exit 1; \
+	fi; \
+	echo "Creating tag $$TAG_VERSION..."; \
+	git tag -a "$$TAG_VERSION" -m "Release $$TAG_VERSION"; \
+	echo "✅ Tag $$TAG_VERSION created"
+
+push-tag: tag ## Create tag and push to remote repository
+	@TAG_VERSION="v$(VERSION)"; \
+	CURRENT_BRANCH=$$(git branch --show-current 2>/dev/null || echo ""); \
+	REMOTE=$$(git config branch.$$CURRENT_BRANCH.remote 2>/dev/null || echo "origin"); \
+	if [ -z "$$REMOTE" ] || [ "$$REMOTE" = "" ]; then \
+		REMOTE="origin"; \
+	fi; \
+	echo "Pushing tag $$TAG_VERSION to $$REMOTE..."; \
+	git push $$REMOTE "$$TAG_VERSION"; \
+	echo "✅ Tag $$TAG_VERSION pushed to $$REMOTE"
+
+release: changelog push-tag ## Create release: update changelog, create tag and push
+	@echo "✅ Release $(VERSION) created and pushed"
 
