@@ -61,11 +61,8 @@ deps: ## Download dependencies
 tidy: ## Tidy dependencies
 	go mod tidy
 
-update: ## Update all dependencies to latest versions
-	@echo "Updating dependencies..."
-	go get -u ./...
-	go mod tidy
-	@echo "Dependencies updated"
+update: ## Update all dependencies to latest versions and create commit
+	@./hack/update-deps.sh
 
 check-all: copyright-check ## Run all checks (copyright, format, goimports, lint)
 	@echo "Checking code formatting (gofmt)..."
