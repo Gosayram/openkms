@@ -16,7 +16,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- Metadata into cli for containers and added server slim version
+
+## [0.3.3] - 2025-11-15
+
 ### Changed
+- Bump release
 - Merge pull request #5 from Gosayram/fix/ci
 
 ### Fixed
@@ -63,7 +69,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Changelog mechanism for autogen
 
 
-[Unreleased]: https://github.com/Gosayram/openkms/compare/v0.3.2...HEAD
+[Unreleased]: https://github.com/Gosayram/openkms/compare/v0.3.3...HEAD
+[0.3.3]: https://github.com/Gosayram/openkms/compare/v0.3.2...v0.3.3
 [0.3.2]: https://github.com/Gosayram/openkms/compare/v0.3.1...v0.3.2
 [0.3.1]: https://github.com/Gosayram/openkms/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/Gosayram/openkms/compare/f505492a3c537cde34bba2964cffa56855efb52d...v0.3.0
