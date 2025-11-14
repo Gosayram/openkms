@@ -40,6 +40,29 @@ REPO_URL="${REPO_URL%.git}"
 
 cd "${REPO_ROOT}"
 
+# Function to check if commit should be skipped (e.g., CHANGELOG-only commits)
+# Returns: 0 (true) if should skip, 1 (false) if should include
+should_skip_commit() {
+    local msg="$1"
+    local upper_msg=$(echo "$msg" | tr '[:lower:]' '[:upper:]')
+    
+    # Skip commits that only update CHANGELOG
+    # Patterns: "bump CHANGELOG", "update CHANGELOG", "[UPD] CHANGELOG", "[UPD] - bump CHANGELOG", etc.
+    # Match patterns like: [UPD] bump CHANGELOG, [UPD] - bump CHANGELOG, bump CHANGELOG, etc.
+    # Using grep for better compatibility across bash versions
+    if echo "$upper_msg" | grep -qE '^\[?[A-Z]*\]?[[:space:]]*[-:]?[[:space:]]*(BUMP|UPDATE|UPD)[[:space:]]+.*CHANGELOG[[:space:]]*[;:]?[[:space:]]*$'; then
+        return 0  # Skip
+    fi
+    
+    # Skip if message contains only "CHANGELOG" with optional prefix/suffix
+    # Patterns: "[UPD] CHANGELOG", "CHANGELOG", "[UPD] - CHANGELOG", etc.
+    if echo "$upper_msg" | grep -qE '^\[?[A-Z]*\]?[[:space:]]*[-:]?[[:space:]]*CHANGELOG[[:space:]]*[;:]?[[:space:]]*$'; then
+        return 0  # Skip
+    fi
+    
+    return 1  # Don't skip
+}
+
 # Function to categorize commit message into changelog type
 # Returns: Added, Changed, Deprecated, Removed, Fixed, Security, or empty
 categorize_commit() {
@@ -183,6 +206,11 @@ format_version_section() {
     
     # Process commits and group by type
     while IFS='|' read -r hash date_str subject; do
+        # Skip commits that only update CHANGELOG
+        if should_skip_commit "$subject"; then
+            continue
+        fi
+        
         category=$(categorize_commit "$subject")
         if [ -z "$category" ]; then
             continue
@@ -330,6 +358,11 @@ EOF
             touch "$added_file" "$changed_file" "$deprecated_file" "$removed_file" "$fixed_file" "$security_file"
             
             while IFS='|' read -r hash date_str subject; do
+                # Skip commits that only update CHANGELOG
+                if should_skip_commit "$subject"; then
+                    continue
+                fi
+                
                 category=$(categorize_commit "$subject")
                 if [ -z "$category" ]; then
                     continue
@@ -434,6 +467,11 @@ EOF
             touch "$added_file" "$changed_file" "$deprecated_file" "$removed_file" "$fixed_file" "$security_file"
             
             while IFS='|' read -r hash date_str subject; do
+                # Skip commits that only update CHANGELOG
+                if should_skip_commit "$subject"; then
+                    continue
+                fi
+                
                 category=$(categorize_commit "$subject")
                 if [ -z "$category" ]; then
                     continue
