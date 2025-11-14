@@ -226,6 +226,19 @@ func initializeStorage(cfg *config.Config, logger *zap.Logger) (storage.Backend,
 		logger.Info("Using bbolt storage backend", zap.String("path", cfg.Storage.Path))
 		return storage.NewBoltBackend(cfg.Storage.Path)
 
+	case "etcd":
+		logger.Info("Using etcd storage backend",
+			zap.Strings("endpoints", cfg.Storage.Endpoints),
+			zap.Duration("dial_timeout", cfg.Storage.DialTimeout),
+			zap.Duration("request_timeout", cfg.Storage.RequestTimeout),
+		)
+		etcdConfig := storage.EtcdConfig{
+			Endpoints:      cfg.Storage.Endpoints,
+			DialTimeout:    cfg.Storage.DialTimeout,
+			RequestTimeout: cfg.Storage.RequestTimeout,
+		}
+		return storage.NewEtcdBackend(etcdConfig)
+
 	default:
 		return nil, fmt.Errorf("unknown storage type: %s", cfg.Storage.Type)
 	}
