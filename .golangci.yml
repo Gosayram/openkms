@@ -1,0 +1,135 @@
+version: "2"
+
+run:
+  issues-exit-code: 1
+  tests: true
+  timeout: 1m
+  concurrency: 4
+
+linters:
+  enable:
+    - bodyclose
+    - dupl
+    - funlen
+    - gochecknoinits
+    - goconst
+    - gocritic
+    - gocyclo
+    - goprintffuncname
+    - gosec
+    - govet
+    - lll
+    - misspell
+    - mnd
+    - nakedret
+    - revive
+    - staticcheck
+    - unconvert
+    - unparam
+    - whitespace
+  disable:
+    - depguard
+  settings:
+    dupl:
+      threshold: 100
+    funlen:
+      lines: 100
+      statements: 50
+    gocognit:
+      min-complexity: 20
+    goconst:
+      min-len: 3
+      min-occurrences: 3
+    gocritic:
+      disabled-checks:
+        - wrapperFunc
+      enabled-tags:
+        - performance
+        - style
+        - experimental
+    gocyclo:
+      min-complexity: 15
+    govet:
+      enable:
+        - shadow
+    lll:
+      line-length: 120
+    misspell:
+      locale: US
+    revive:
+      severity: warning
+      confidence: 0.8
+      rules:
+        - name: blank-imports
+        - name: context-as-argument
+        - name: context-keys-type
+        - name: dot-imports
+        - name: error-return
+        - name: error-strings
+        - name: error-naming
+        - name: exported
+        - name: increment-decrement
+        - name: var-naming
+        - name: var-declaration
+        - name: package-comments
+        - name: range
+        - name: receiver-naming
+        - name: time-naming
+        - name: unexported-return
+        - name: indent-error-flow
+        - name: errorf
+        - name: empty-block
+        - name: superfluous-else
+        - name: unused-parameter
+        - name: unreachable-code
+        - name: redefines-builtin-id
+  exclusions:
+    generated: lax
+    rules:
+      - path: _test\.go
+        linters:
+          - funlen
+          - gocognit
+          - mnd
+      - path: ^cmd/
+        linters:
+          - gochecknoinits
+      - path: (.+)\.go$
+        text: "Error return value of .((os\\.)?std(out|err)\\..*|.*Close|.*Flush|os\\.Remove(All)?|.*printf?|os\\.(Un)?Setenv). is not checked"
+    paths:
+      - .*\.pb\.go$
+      - .*_test\.go$
+      - vendor
+      - hack
+      - .git
+      - third_party$
+      - builtin$
+      - examples$
+      - bin$
+      - api/proto
+
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0
+
+formatters:
+  enable:
+    - gofmt
+    - goimports
+  settings:
+    goimports:
+      local-prefixes:
+        - github.com/Gosayram/openkms
+  exclusions:
+    generated: lax
+    paths:
+      - .*\.pb\.go$
+      - .*_test\.go$
+      - vendor
+      - hack
+      - .git
+      - third_party$
+      - builtin$
+      - examples$
+      - bin$
+      - api/proto

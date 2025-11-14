@@ -28,5 +28,28 @@ go.work.sum
 .env
 
 # Editor/IDE
-# .idea/
-# .vscode/
+.idea/
+.vscode/
+
+# Build artifacts
+bin/
+dist/
+
+# Data and storage
+data/
+*.db
+*.db-shm
+*.db-wal
+
+# Coverage reports
+coverage.html
+
+# Temporary files
+*.tmp
+*.log
+
+# Docker
+.docker/
+
+# Vendor directory
+vendor/

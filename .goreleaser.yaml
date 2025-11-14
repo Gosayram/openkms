@@ -1,0 +1,220 @@
+# GoReleaser config for OpenKMS
+# Version is read from .release-version into RELEASE_VERSION
+
+version: 2
+
+project_name: openkms
+
+builds:
+  - id: server
+    binary: openkms-server
+    main: ./cmd/openkms-server
+    env:
+      - CGO_ENABLED=0
+    flags:
+      - -trimpath
+    ldflags:
+      - -extldflags "-static"
+      - -X 'github.com/Gosayram/openkms/internal/version.Version={{ .Env.RELEASE_VERSION }}'
+      - -X 'github.com/Gosayram/openkms/internal/version.Commit={{ .Commit }}'
+      - -X 'github.com/Gosayram/openkms/internal/version.Date={{ .Date }}'
+      - -s
+      - -w
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    goarm:
+      - "7"
+    ignore:
+      - goos: darwin
+        goarch: arm64
+        goarm: "7"
+
+  - id: cli
+    binary: openkms-cli
+    main: ./cmd/openkms-cli
+    env:
+      - CGO_ENABLED=0
+    flags:
+      - -trimpath
+    ldflags:
+      - -extldflags "-static"
+      - -X 'github.com/Gosayram/openkms/internal/version.Version={{ .Env.RELEASE_VERSION }}'
+      - -X 'github.com/Gosayram/openkms/internal/version.Commit={{ .Commit }}'
+      - -X 'github.com/Gosayram/openkms/internal/version.Date={{ .Date }}'
+      - -s
+      - -w
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    goarm:
+      - "7"
+    ignore:
+      - goos: darwin
+        goarch: arm64
+        goarm: "7"
+
+archives:
+  - id: default
+    # Includes built binaries + files below
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}{{ if .Arm }}v{{ .Arm }}{{ end }}"
+    files:
+      - README.md
+      - LICENSE
+
+checksum:
+  name_template: "{{ .ProjectName }}_{{ .Version }}_checksums.txt"
+  algorithm: sha256
+
+signs:
+  - id: checksum
+    artifacts: checksum
+    signature: "${artifact}.sig"
+    cmd: gpg
+    args:
+      - "--batch"
+      - "--pinentry-mode=loopback"
+      - "--passphrase={{ .Env.GPG_PASSPHRASE }}"
+      - "--default-key={{ .Env.GPG_FINGERPRINT }}"
+      - "--output"
+      - "${signature}"
+      - "--detach-sign"
+      - "${artifact}"
+
+binary_signs:
+  - id: binaries
+    artifacts: binary
+    signature: "${artifact}.sig"
+    cmd: gpg
+    args:
+      - "--batch"
+      - "--pinentry-mode=loopback"
+      - "--passphrase={{ .Env.GPG_PASSPHRASE }}"
+      - "--default-key={{ .Env.GPG_FINGERPRINT }}"
+      - "--output"
+      - "${signature}"
+      - "--detach-sign"
+      - "${artifact}"
+
+release:
+  mode: replace
+  header: |
+    ## OpenKMS {{ .Tag }}
+
+    Release {{ .Tag }} of OpenKMS - autonomous, easily deployable, opinionated KMS for on-prem/air-gap infrastructures.
+
+    ### Docker Images (signed with Cosign)
+
+    Docker images are available at GitHub Container Registry (ghcr.io). All images are signed with Cosign:
+    - `server:{{ .Version }}` and `server:latest`
+    - `cli:{{ .Version }}` and `cli:latest`
+
+    Verify image signatures using the public key from the repository:
+
+    ```bash
+    export USERNAME=<your-github-username>
+    cosign login ghcr.io -u "$USERNAME"
+    cosign verify --key cosign.pub ghcr.io/gosayram/openkms/server:{{ .Version }}
+    ```
+
+    The `cosign.pub` file is available in the repository root.
+
+    ### Binaries (signed with GPG)
+
+    This release includes the following binaries, signed with GPG:
+    - `openkms-server` - OpenKMS server
+    - `openkms-cli` - OpenKMS CLI tool
+
+    ### Installation
+
+    Download the appropriate binary or archive for your platform from the assets below.
+
+    ### Verification
+
+    Verify checksums:
+
+    ```bash
+    sha256sum --check {{ .ProjectName }}_{{ .Version }}_checksums.txt
+    ```
+
+    Verify checksum signature:
+
+    ```bash
+    gpg --verify {{ .ProjectName }}_{{ .Version }}_checksums.txt.sig {{ .ProjectName }}_{{ .Version }}_checksums.txt
+    ```
+
+    Verify binary signatures:
+
+    ```bash
+    gpg --verify openkms-server{{ .Version }}*.sig openkms-server
+    gpg --verify openkms-cli{{ .Version }}*.sig openkms-cli
+    ```
+  footer: |
+    **Full Changelog**: https://github.com/Gosayram/openkms/compare/{{ .PreviousTag }}...{{ .Tag }}
+
+changelog:
+  sort: asc
+  use: github
+  format: "{{ .SHA }}: {{ .Message }}{{ with .AuthorUsername }} (@{{ . }}){{ end }}"
+  filters:
+    exclude:
+      - "^test:"
+      - "^test\\("
+      - "^chore: update$"
+      - "^chore: docs$"
+      - "^docs: update$"
+      - "^chore: schema$"
+      - "^chore: typo$"
+      - "^chore: auto-update generated files$"
+      - "^chore: update schema$"
+      - "^chore: schema update$"
+      - "^chore\\(deps\\): "
+      - "^(build|ci): "
+      - "merge conflict"
+      - "merge conflict"
+      - Merge pull request
+      - Merge remote-tracking branch
+      - Merge branch
+      - go mod tidy
+  groups:
+    - title: "New Features"
+      regexp: '^.*?(\[ADD\]|\[FEATURE\]|\[INIT\]|feat(\(.+\))?!?:|feature(\(.+\))?!?:|add(\(.+\))?!?:|init(\(.+\))?!?:|\[feature\/.+\]).*$'
+      order: 100
+    - title: "Performance improvements"
+      regexp: '^.*?(\[perf\]|perf(\(.+\))?!?:).*$'
+      order: 120
+    - title: "Security updates"
+      regexp: '^.*?sec(\(.+\))?!?:.+$'
+      order: 150
+    - title: "Bug fixes"
+      regexp: '^.*?(\[FIX\]|\[BUGFIX\]|fix(\(.+\))?!?:|bugfix(\(.+\))?!?:).*$'
+      order: 200
+    - title: "Refactoring"
+      regexp: '^.*?(\[REFACTOR\]|refactor(\(.+\))?!?:).*$'
+      order: 250
+    - title: "Updates and Enhancements"
+      regexp: '^.*?\[UPD\].*$'
+      order: 300
+    - title: "Documentation updates"
+      regexp: '^.*?(\[DOCS\]|docs?(\(.+\))?!?:).*$'
+      order: 400
+    - title: "Tests"
+      regexp: '^.*?(\[TEST\]|test(\(.+\))?!?:).*$'
+      order: 450
+    - title: "CI and Build"
+      regexp: '^.*?(\[CI\]|\[CHORE\]|\[LINT\]|ci(\(.+\))?!?:|build(\(.+\))?!?:|chore(\(.+\))?!?:|lint(\(.+\))?!?:).*$'
+      order: 500
+    - title: "Dependencies"
+      regexp: '^.*?Bump .*$'
+      order: 600
+    - title: "Other work"
+      order: 9999
+
