@@ -171,6 +171,29 @@ jobs:
             org.opencontainers.image.revision=${{ env.COMMIT }}
             org.opencontainers.image.created=${{ env.DATE }}
 
+      - name: Build and push server-slim image
+        uses: docker/build-push-action@263435318d21b8e681c14492fe198d362a7d2c83 # v6.18.0
+        with:
+          context: .
+          file: deploy/Dockerfile
+          target: openkms-server-slim
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: |
+            ghcr.io/${{ env.DOCKER_REPOSITORY }}/server-slim:${{ env.VERSION }}
+            ghcr.io/${{ env.DOCKER_REPOSITORY }}/server-slim:latest
+          build-args: |
+            VERSION=${{ env.VERSION }}
+            COMMIT=${{ env.COMMIT }}
+            DATE=${{ env.DATE }}
+          labels: |
+            org.opencontainers.image.title=openkms-server-slim
+            org.opencontainers.image.description=OpenKMS Key Management Service server (slim)
+            org.opencontainers.image.version=${{ env.VERSION_NO_V }}
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.revision=${{ env.COMMIT }}
+            org.opencontainers.image.created=${{ env.DATE }}
+
       - name: Sign server image with Cosign
         env:
           COSIGN_PRIVATE_KEY: ${{ secrets.COSIGN_PRIVATE_KEY }}
@@ -186,4 +209,12 @@ jobs:
         run: |
           echo "$COSIGN_PASSWORD" | cosign sign --yes --key env://COSIGN_PRIVATE_KEY ghcr.io/${{ env.DOCKER_REPOSITORY }}/cli:${{ env.VERSION }}
           echo "$COSIGN_PASSWORD" | cosign sign --yes --key env://COSIGN_PRIVATE_KEY ghcr.io/${{ env.DOCKER_REPOSITORY }}/cli:latest
+
+      - name: Sign server-slim image with Cosign
+        env:
+          COSIGN_PRIVATE_KEY: ${{ secrets.COSIGN_PRIVATE_KEY }}
+          COSIGN_PASSWORD: ${{ secrets.COSIGN_PASSWORD }}
+        run: |
+          echo "$COSIGN_PASSWORD" | cosign sign --yes --key env://COSIGN_PRIVATE_KEY ghcr.io/${{ env.DOCKER_REPOSITORY }}/server-slim:${{ env.VERSION }}
+          echo "$COSIGN_PASSWORD" | cosign sign --yes --key env://COSIGN_PRIVATE_KEY ghcr.io/${{ env.DOCKER_REPOSITORY }}/server-slim:latest
 
