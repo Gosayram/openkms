@@ -128,3 +128,6 @@ copyright-update: ## Update copyright year
 update-version: ## Update version in .release-version based on current phase in .arch-plan-docs.md
 	@./hack/update-version.sh
 
+changelog: ## Generate CHANGELOG.md from git commits
+	@./hack/generate-changelog.sh
+
