@@ -17,7 +17,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Bump release version and start phase 3
 - Implement 2 phase: enhanced feature implementation with architecture plan
+- Implement etcd storage backend
 - Initial commit
 
 ### Changed
@@ -25,6 +27,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added changelog automation script and generate first CHANGELOG.md
 - Added release version and phase validation via arch-plan
 - Added script for updating all packages in Go
+- Bump CHANGELOG
 - Improve  changelog logic
 
 ### Fixed
