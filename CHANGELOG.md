@@ -17,11 +17,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Add ABAC support for authorization #16
+- Add CI/CD integration examples for artifact signing
+- Add multi-tenant policies support
 - Add PKCS#11 and TPM 2.0 support for master key providers
+- Add verification utilities for Cosign signatures
+- Implement artifact signature format for Cosign v3
+- Implement Cosign v3+ compatible artifact signing
+- Implement policy inheritance for RBAC and ABAC
 
 ### Changed
+- Bump README
 - Merge pull request #11 from Gosayram/fix/announce_description
 - Merge pull request #14 from Gosayram/feature/phase_3_3
+- Merge pull request #20 from Gosayram/feature/phase_3_4
+- Merge pull request #26 from Gosayram/feature/phase_3_5
 
 ### Fixed
 - Pkgs url for announce description
