@@ -122,7 +122,7 @@ release:
     ```bash
     export USERNAME=<your-github-username>
     cosign login ghcr.io -u "$USERNAME"
-    cosign verify --key cosign.pub ghcr.io/gosayram/openkms/server:{{ .Version }}
+    cosign verify --key cosign.pub ghcr.io/{{ .Env.DOCKER_REPO_PATH }}/server:{{ .Version }}
     ```
 
     The `cosign.pub` file is available in the repository root.
@@ -161,7 +161,7 @@ release:
     # For other platforms, replace linux_amd64 with your platform (e.g., darwin_arm64v8, windows_amd64)
     ```
   footer: |
-    **Full Changelog**: https://github.com/Gosayram/openkms/compare/{{ .PreviousTag }}...{{ .Tag }}
+    **Full Changelog**: {{ .Env.GITHUB_REPO_URL }}/compare/{{ .PreviousTag }}...{{ .Tag }}
 
 changelog:
   sort: asc
@@ -220,4 +220,47 @@ changelog:
       order: 600
     - title: "Other work"
       order: 9999
+
+announce:
+  telegram:
+    # Whether its enabled or not.
+    enabled: true
+
+    # Integer representation of your channel
+    # Templates: allowed.
+    chat_id: "{{ .Env.OPENKMS_CHAT_ID }}"
+
+    # Message template to use while publishing.
+    # Using MarkdownV2 format with proper escaping
+    message_template: |
+      🎉 *{{ mdv2escape .ProjectName }} {{ mdv2escape .Tag }}* {{ mdv2escape "is out!" }}
+
+      📋 *{{ mdv2escape "Release Information:" }}*
+      • {{ mdv2escape "Version:" }} `{{ mdv2escape .Version }}`
+      • {{ mdv2escape "Commit:" }} `{{ mdv2escape .ShortCommit }}`
+      • {{ mdv2escape "Date:" }} `{{ mdv2escape .Date }}`
+      {{- if .PreviousTag }}
+      • {{ mdv2escape "Previous:" }} `{{ mdv2escape .PreviousTag }}`
+      {{- end }}
+
+      📦 *{{ mdv2escape "Docker Images:" }}*
+      {{ mdv2escape "All images are signed with Cosign and available at GitHub Container Registry:" }}
+      • [{{ mdv2escape "Server" }}]({{ .Env.GITHUB_REPO_URL }}/pkgs/container/server) `{{ mdv2escape .Version }}` / `latest`
+      • [{{ mdv2escape "CLI" }}]({{ .Env.GITHUB_REPO_URL }}/pkgs/container/cli) `{{ mdv2escape .Version }}` / `latest`
+      • [{{ mdv2escape "Server Slim" }}]({{ .Env.GITHUB_REPO_URL }}/pkgs/container/server-slim) `{{ mdv2escape .Version }}` / `latest`
+
+      📥 *{{ mdv2escape "Binaries:" }}*
+      {{ mdv2escape "Signed binaries and checksums available for Linux, macOS, and Windows (amd64 and arm64) in the" }} [{{ mdv2escape "release assets" }}]({{ .ReleaseURL }})\.
+
+      🔗 *{{ mdv2escape "Links:" }}*
+      • [{{ mdv2escape "View Full Release" }}]({{ .ReleaseURL }})
+      • [{{ mdv2escape "Changelog" }}]({{ .Env.GITHUB_REPO_URL }}/blob/{{ mdv2escape .Tag }}/CHANGELOG.md)
+      • [{{ mdv2escape "Repository" }}]({{ .Env.GITHUB_REPO_URL }})
+      {{- if .PreviousTag }}
+      • [{{ mdv2escape "Compare Changes" }}]({{ .Env.GITHUB_REPO_URL }}/compare/{{ mdv2escape .PreviousTag }}...{{ mdv2escape .Tag }})
+      {{- end }}
+
+    # Parse mode.
+    # Valid options are MarkdownV2 and HTML.
+    parse_mode: MarkdownV2
 
