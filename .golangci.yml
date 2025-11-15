@@ -96,6 +96,8 @@ linters:
           - gochecknoinits
       - path: (.+)\.go$
         text: "Error return value of .((os\\.)?std(out|err)\\..*|.*Close|.*Flush|os\\.Remove(All)?|.*printf?|os\\.(Un)?Setenv). is not checked"
+      - path: sign-artifact_internal_test\.go$
+        text: "redeclared in this block"
     paths:
       - .*\.pb\.go$
       - .*_test\.go$
@@ -111,6 +113,11 @@ linters:
 issues:
   max-issues-per-linter: 0
   max-same-issues: 0
+  exclude-rules:
+    - path: sign-artifact_internal_test\.go$
+      text: "redeclared in this block"
+    - path: examples/cicd/scripts/sign-artifact_internal_test\.go$
+      text: "redeclared in this block"
 
 formatters:
   enable:

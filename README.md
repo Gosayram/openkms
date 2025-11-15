@@ -49,6 +49,7 @@ OpenKMS is designed as a modular, secure, and scalable key management service th
 - **REST API**: HTTP/HTTPS API for programmatic access
 - **Metrics**: Prometheus metrics for monitoring and observability
 - **Health Checks**: Health check endpoints for service monitoring
+- **CI/CD Integration**: Examples and utilities for integrating OpenKMS into CI/CD pipelines for artifact signing
 
 ## Project Status
 
@@ -93,6 +94,26 @@ The server will start on `localhost:8080` by default. Configuration can be provi
 
 The CLI provides commands for key management, cryptographic operations, and service administration.
 
+### CI/CD Integration
+
+OpenKMS provides examples and utilities for integrating artifact signing into CI/CD pipelines. See the [CI/CD Integration Examples](examples/cicd/README.md) for:
+
+- GitHub Actions workflows for signing Docker images and binaries
+- GitLab CI pipelines for artifact signing
+- Jenkins pipelines for automated signing
+- Utility scripts for signing artifacts
+
+Quick example:
+
+```bash
+# Sign an artifact using the provided script
+./examples/cicd/scripts/sign-artifact.sh \
+  --key-id signing-key \
+  --file artifact.tar.gz \
+  --url https://openkms.example.com \
+  --token YOUR_TOKEN
+```
+
 ### Testing
 
 ```bash
@@ -114,6 +135,8 @@ openkms/
   cmd/
     openkms-server/    # Server application
     openkms-cli/       # CLI tool
+  examples/
+    cicd/              # CI/CD integration examples (GitHub Actions, GitLab CI, Jenkins)
   internal/
     audit/             # Audit logging and signing
     authn/             # Authentication
