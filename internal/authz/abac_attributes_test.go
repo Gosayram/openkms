@@ -265,7 +265,7 @@ func TestBuildAttributes(t *testing.T) {
 		Metadata: map[string]string{},
 	}
 
-	attrs := BuildAttributes(subjectAttrs, objectAttrs, "encrypt", envAttrs)
+	attrs := BuildAttributes(&subjectAttrs, &objectAttrs, "encrypt", &envAttrs)
 
 	if attrs.Subject.ID != "user1" {
 		t.Errorf("Subject.ID = %v, want user1", attrs.Subject.ID)

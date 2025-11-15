@@ -84,17 +84,37 @@ type ABACPolicy struct {
 
 // ABACEngine manages ABAC policies and evaluates access decisions
 type ABACEngine struct {
-	policies []ABACPolicy
+	policies       []ABACPolicy
+	tenantPolicies map[string][]ABACPolicy // tenant -> policies
 	// Enable ABAC (can be disabled to fall back to RBAC)
 	enabled bool
+	// Enable tenant isolation (policies are scoped to tenant)
+	tenantIsolation bool
 }
 
 // NewABACEngine creates a new ABAC engine
 func NewABACEngine() *ABACEngine {
 	return &ABACEngine{
-		policies: make([]ABACPolicy, 0),
-		enabled:  true,
+		policies:        make([]ABACPolicy, 0),
+		tenantPolicies:  make(map[string][]ABACPolicy),
+		enabled:         true,
+		tenantIsolation: false,
 	}
+}
+
+// EnableTenantIsolation enables tenant isolation for ABAC policies
+func (e *ABACEngine) EnableTenantIsolation() {
+	e.tenantIsolation = true
+}
+
+// DisableTenantIsolation disables tenant isolation for ABAC policies
+func (e *ABACEngine) DisableTenantIsolation() {
+	e.tenantIsolation = false
+}
+
+// IsTenantIsolationEnabled returns true if tenant isolation is enabled
+func (e *ABACEngine) IsTenantIsolationEnabled() bool {
+	return e.tenantIsolation
 }
 
 // Enable enables ABAC engine
@@ -113,32 +133,85 @@ func (e *ABACEngine) IsEnabled() bool {
 }
 
 // AddPolicy adds an ABAC policy
-func (e *ABACEngine) AddPolicy(policy ABACPolicy) {
-	e.policies = append(e.policies, policy)
-	// Sort by priority (higher priority first)
-	e.sortPolicies()
+// If tenant is provided and tenant isolation is enabled, adds as tenant-scoped policy
+func (e *ABACEngine) AddPolicy(policy ABACPolicy, tenant ...string) {
+	if len(tenant) > 0 && tenant[0] != "" && e.tenantIsolation {
+		// Add tenant-scoped policy
+		if e.tenantPolicies[tenant[0]] == nil {
+			e.tenantPolicies[tenant[0]] = make([]ABACPolicy, 0)
+		}
+		e.tenantPolicies[tenant[0]] = append(e.tenantPolicies[tenant[0]], policy)
+		e.sortTenantPolicies(tenant[0])
+	} else {
+		// Add global policy
+		e.policies = append(e.policies, policy)
+		e.sortPolicies()
+	}
+}
+
+// AddTenantPolicy adds a tenant-scoped ABAC policy
+func (e *ABACEngine) AddTenantPolicy(tenant string, policy ABACPolicy) {
+	e.AddPolicy(policy, tenant)
 }
 
 // RemovePolicy removes a policy by name
-func (e *ABACEngine) RemovePolicy(name string) {
-	for i, policy := range e.policies {
-		if policy.Name == name {
-			e.policies = append(e.policies[:i], e.policies[i+1:]...)
-			return
+// If tenant is provided, removes tenant-scoped policy, otherwise removes global policy
+func (e *ABACEngine) RemovePolicy(name string, tenant ...string) {
+	if len(tenant) > 0 && tenant[0] != "" {
+		// Remove tenant-scoped policy
+		if policies, ok := e.tenantPolicies[tenant[0]]; ok {
+			for i, policy := range policies {
+				if policy.Name == name {
+					e.tenantPolicies[tenant[0]] = append(policies[:i], policies[i+1:]...)
+					if len(e.tenantPolicies[tenant[0]]) == 0 {
+						delete(e.tenantPolicies, tenant[0])
+					}
+					return
+				}
+			}
+		}
+	} else {
+		// Remove global policy
+		for i, policy := range e.policies {
+			if policy.Name == name {
+				e.policies = append(e.policies[:i], e.policies[i+1:]...)
+				return
+			}
 		}
 	}
 }
 
+// RemoveTenantPolicy removes a tenant-scoped policy by name
+func (e *ABACEngine) RemoveTenantPolicy(tenant, name string) {
+	e.RemovePolicy(name, tenant)
+}
+
 // CheckAccess evaluates access decision based on attributes
 // Returns (allowed, error)
-func (e *ABACEngine) CheckAccess(attrs Attributes) (bool, error) {
+// If tenant isolation is enabled, only evaluates tenant-scoped policies
+func (e *ABACEngine) CheckAccess(attrs *Attributes) (bool, error) {
 	if !e.enabled {
 		return false, fmt.Errorf("ABAC engine is disabled")
 	}
 
-	// Evaluate policies in priority order
+	// If tenant isolation is enabled, check tenant-scoped policies first
+	if e.tenantIsolation && attrs.Subject.Tenant != "" {
+		if tenantPolicies, ok := e.tenantPolicies[attrs.Subject.Tenant]; ok {
+			// Evaluate tenant-scoped policies in priority order
+			for _, policy := range tenantPolicies {
+				if policy.Condition(*attrs) {
+					// Policy matched, return its effect
+					return policy.Effect == "allow", nil
+				}
+			}
+		}
+		// If tenant isolation is enabled and no tenant policy matched, deny
+		return false, nil
+	}
+
+	// Evaluate global policies in priority order
 	for _, policy := range e.policies {
-		if policy.Condition(attrs) {
+		if policy.Condition(*attrs) {
 			// Policy matched, return its effect
 			return policy.Effect == "allow", nil
 		}
@@ -162,14 +235,50 @@ func (e *ABACEngine) sortPolicies() {
 	}
 }
 
+// sortTenantPolicies sorts tenant policies by priority (higher priority first)
+func (e *ABACEngine) sortTenantPolicies(tenant string) {
+	policies := e.tenantPolicies[tenant]
+	if policies == nil {
+		return
+	}
+	// Simple insertion sort by priority
+	for i := 1; i < len(policies); i++ {
+		key := policies[i]
+		j := i - 1
+		for j >= 0 && policies[j].Priority < key.Priority {
+			policies[j+1] = policies[j]
+			j--
+		}
+		policies[j+1] = key
+	}
+	e.tenantPolicies[tenant] = policies
+}
+
 // GetAllPolicies returns all policies
-func (e *ABACEngine) GetAllPolicies() []ABACPolicy {
+// If tenant is provided, returns tenant-scoped policies, otherwise returns global policies
+func (e *ABACEngine) GetAllPolicies(tenant ...string) []ABACPolicy {
+	if len(tenant) > 0 && tenant[0] != "" {
+		if policies, ok := e.tenantPolicies[tenant[0]]; ok {
+			return policies
+		}
+		return []ABACPolicy{}
+	}
 	return e.policies
 }
 
+// GetTenantPolicies returns all policies for a tenant
+func (e *ABACEngine) GetTenantPolicies(tenant string) []ABACPolicy {
+	return e.GetAllPolicies(tenant)
+}
+
 // ClearPolicies removes all policies
-func (e *ABACEngine) ClearPolicies() {
-	e.policies = make([]ABACPolicy, 0)
+// If tenant is provided, clears tenant-scoped policies, otherwise clears global policies
+func (e *ABACEngine) ClearPolicies(tenant ...string) {
+	if len(tenant) > 0 && tenant[0] != "" {
+		delete(e.tenantPolicies, tenant[0])
+	} else {
+		e.policies = make([]ABACPolicy, 0)
+	}
 }
 
 // BuildCondition creates a condition function from a simple expression

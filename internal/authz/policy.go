@@ -22,6 +22,7 @@ import (
 // Policy defines access policy for an identity
 type Policy struct {
 	Identity    string
+	Tenant      string // Tenant ID for multi-tenant isolation (empty means global policy)
 	Permissions PermissionSet
 	KeyPatterns []string // Key ID patterns (e.g., "key:*", "key:app-*")
 }
@@ -29,11 +30,13 @@ type Policy struct {
 // Engine manages authorization policies
 // It can use either simple policy engine, Casbin engine, or ABAC engine
 type Engine struct {
-	policies  map[string]*Policy
+	policies  map[string]*Policy // Key: identity or "tenant:identity" for tenant-scoped policies
 	casbin    *CasbinEngine
 	useCasbin bool
 	abac      *ABACEngine
 	useABAC   bool
+	// Multi-tenant support
+	tenantPolicies map[string]map[string]*Policy // tenant -> identity -> policy
 }
 
 // IsCasbinEngine returns true if the engine is using Casbin
@@ -52,29 +55,32 @@ func (e *Engine) GetCasbinEngine() *CasbinEngine {
 // NewEngine creates a new authorization engine
 func NewEngine() *Engine {
 	return &Engine{
-		policies:  make(map[string]*Policy),
-		useCasbin: false,
-		useABAC:   false,
+		policies:       make(map[string]*Policy),
+		tenantPolicies: make(map[string]map[string]*Policy),
+		useCasbin:      false,
+		useABAC:        false,
 	}
 }
 
 // NewEngineWithCasbin creates a new authorization engine with Casbin
 func NewEngineWithCasbin(casbinEngine *CasbinEngine) *Engine {
 	return &Engine{
-		policies:  make(map[string]*Policy),
-		casbin:    casbinEngine,
-		useCasbin: true,
-		useABAC:   false,
+		policies:       make(map[string]*Policy),
+		tenantPolicies: make(map[string]map[string]*Policy),
+		casbin:         casbinEngine,
+		useCasbin:      true,
+		useABAC:        false,
 	}
 }
 
 // NewEngineWithABAC creates a new authorization engine with ABAC
 func NewEngineWithABAC(abacEngine *ABACEngine) *Engine {
 	return &Engine{
-		policies:  make(map[string]*Policy),
-		useABAC:   true,
-		abac:      abacEngine,
-		useCasbin: false,
+		policies:       make(map[string]*Policy),
+		tenantPolicies: make(map[string]map[string]*Policy),
+		useABAC:        true,
+		abac:           abacEngine,
+		useCasbin:      false,
 	}
 }
 
@@ -82,11 +88,12 @@ func NewEngineWithABAC(abacEngine *ABACEngine) *Engine {
 // ABAC is evaluated first, then Casbin if ABAC doesn't match
 func NewEngineWithCasbinAndABAC(casbinEngine *CasbinEngine, abacEngine *ABACEngine) *Engine {
 	return &Engine{
-		policies:  make(map[string]*Policy),
-		casbin:    casbinEngine,
-		useCasbin: true,
-		abac:      abacEngine,
-		useABAC:   true,
+		policies:       make(map[string]*Policy),
+		tenantPolicies: make(map[string]map[string]*Policy),
+		casbin:         casbinEngine,
+		useCasbin:      true,
+		abac:           abacEngine,
+		useABAC:        true,
 	}
 }
 
@@ -107,35 +114,108 @@ func (e *Engine) IsABACEngine() bool {
 }
 
 // AddPolicy adds a policy
+// If policy has a tenant, it's stored as tenant-scoped policy
 func (e *Engine) AddPolicy(policy *Policy) {
-	e.policies[policy.Identity] = policy
+	if policy.Tenant != "" {
+		// Tenant-scoped policy
+		if e.tenantPolicies[policy.Tenant] == nil {
+			e.tenantPolicies[policy.Tenant] = make(map[string]*Policy)
+		}
+		e.tenantPolicies[policy.Tenant][policy.Identity] = policy
+	} else {
+		// Global policy
+		e.policies[policy.Identity] = policy
+	}
 }
 
 // RemovePolicy removes a policy
-func (e *Engine) RemovePolicy(identity string) {
-	delete(e.policies, identity)
+// If tenant is provided, removes tenant-scoped policy, otherwise removes global policy
+func (e *Engine) RemovePolicy(identity string, tenant ...string) {
+	if len(tenant) > 0 && tenant[0] != "" {
+		// Remove tenant-scoped policy
+		if tenantPolicies, ok := e.tenantPolicies[tenant[0]]; ok {
+			delete(tenantPolicies, identity)
+			if len(tenantPolicies) == 0 {
+				delete(e.tenantPolicies, tenant[0])
+			}
+		}
+	} else {
+		// Remove global policy
+		delete(e.policies, identity)
+	}
 }
 
 // GetPolicy retrieves a policy for an identity
-func (e *Engine) GetPolicy(identity string) (*Policy, bool) {
+// If tenant is provided, retrieves tenant-scoped policy, otherwise retrieves global policy
+func (e *Engine) GetPolicy(identity string, tenant ...string) (*Policy, bool) {
+	if len(tenant) > 0 && tenant[0] != "" {
+		// Get tenant-scoped policy
+		if tenantPolicies, ok := e.tenantPolicies[tenant[0]]; ok {
+			policy, ok := tenantPolicies[identity]
+			return policy, ok
+		}
+		return nil, false
+	}
+	// Get global policy
 	policy, ok := e.policies[identity]
 	return policy, ok
 }
 
+// AddTenantPolicy adds a tenant-scoped policy
+func (e *Engine) AddTenantPolicy(tenant string, policy *Policy) {
+	policy.Tenant = tenant
+	e.AddPolicy(policy)
+}
+
+// RemoveTenantPolicy removes a tenant-scoped policy
+func (e *Engine) RemoveTenantPolicy(tenant, identity string) {
+	e.RemovePolicy(identity, tenant)
+}
+
+// GetTenantPolicy retrieves a tenant-scoped policy
+func (e *Engine) GetTenantPolicy(tenant, identity string) (*Policy, bool) {
+	return e.GetPolicy(identity, tenant)
+}
+
+// ListTenantPolicies returns all policies for a tenant
+func (e *Engine) ListTenantPolicies(tenant string) []*Policy {
+	if tenantPolicies, ok := e.tenantPolicies[tenant]; ok {
+		policies := make([]*Policy, 0, len(tenantPolicies))
+		for _, policy := range tenantPolicies {
+			policies = append(policies, policy)
+		}
+		return policies
+	}
+	return []*Policy{}
+}
+
 // CheckPermission checks if identity has permission for a key
 // This is the legacy method that doesn't use ABAC attributes
-func (e *Engine) CheckPermission(identity string, permission Permission, keyID string) (bool, error) {
+// If tenant is provided, checks tenant-scoped policies first, then global policies
+func (e *Engine) CheckPermission(identity string, permission Permission, keyID string, tenant ...string) (bool, error) {
 	// Use Casbin if enabled
 	if e.useCasbin && e.casbin != nil {
 		return e.casbin.CheckPermission(identity, permission, keyID)
 	}
 
-	// Fallback to simple policy engine
+	// Check tenant-scoped policy first if tenant is provided
+	if len(tenant) > 0 && tenant[0] != "" {
+		if policy, ok := e.GetTenantPolicy(tenant[0], identity); ok {
+			return e.checkPolicyPermission(policy, permission, keyID)
+		}
+	}
+
+	// Fallback to global policy
 	policy, ok := e.policies[identity]
 	if !ok {
 		return false, fmt.Errorf("no policy found for identity: %s", identity)
 	}
 
+	return e.checkPolicyPermission(policy, permission, keyID)
+}
+
+// checkPolicyPermission checks if a policy grants the requested permission
+func (e *Engine) checkPolicyPermission(policy *Policy, permission Permission, keyID string) (bool, error) {
 	// Check if identity has the permission
 	if !policy.Permissions.Has(permission) {
 		return false, nil
@@ -158,7 +238,7 @@ func (e *Engine) CheckPermission(identity string, permission Permission, keyID s
 
 // CheckPermissionWithAttributes checks if identity has permission for a key using ABAC attributes
 // If ABAC is enabled, it evaluates ABAC policies first, then falls back to RBAC
-func (e *Engine) CheckPermissionWithAttributes(attrs Attributes) (bool, error) {
+func (e *Engine) CheckPermissionWithAttributes(attrs *Attributes) (bool, error) {
 	// If ABAC is enabled, check ABAC policies first
 	if e.useABAC && e.abac != nil {
 		allowed, err := e.abac.CheckAccess(attrs)
@@ -180,9 +260,18 @@ func (e *Engine) CheckPermissionWithAttributes(attrs Attributes) (bool, error) {
 	}
 
 	// Fallback to simple policy engine
-	policy, ok := e.policies[attrs.Subject.ID]
+	// Check tenant-scoped policy first if tenant is available
+	var policy *Policy
+	var ok bool
+	if attrs.Subject.Tenant != "" {
+		policy, ok = e.GetTenantPolicy(attrs.Subject.Tenant, attrs.Subject.ID)
+	}
 	if !ok {
-		return false, fmt.Errorf("no policy found for identity: %s", attrs.Subject.ID)
+		// Fallback to global policy
+		policy, ok = e.policies[attrs.Subject.ID]
+		if !ok {
+			return false, fmt.Errorf("no policy found for identity: %s", attrs.Subject.ID)
+		}
 	}
 
 	// Check if identity has the permission
@@ -241,10 +330,29 @@ func matchPattern(keyID, pattern string) bool {
 }
 
 // ListPolicies returns all policies
-func (e *Engine) ListPolicies() []*Policy {
+// If tenant is provided, returns only tenant-scoped policies, otherwise returns global policies
+func (e *Engine) ListPolicies(tenant ...string) []*Policy {
+	if len(tenant) > 0 && tenant[0] != "" {
+		return e.ListTenantPolicies(tenant[0])
+	}
+
 	policies := make([]*Policy, 0, len(e.policies))
 	for _, policy := range e.policies {
 		policies = append(policies, policy)
+	}
+	return policies
+}
+
+// ListAllPolicies returns all policies (both global and tenant-scoped)
+func (e *Engine) ListAllPolicies() []*Policy {
+	policies := make([]*Policy, 0, len(e.policies))
+	for _, policy := range e.policies {
+		policies = append(policies, policy)
+	}
+	for _, tenantPolicies := range e.tenantPolicies {
+		for _, policy := range tenantPolicies {
+			policies = append(policies, policy)
+		}
 	}
 	return policies
 }

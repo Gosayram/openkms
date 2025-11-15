@@ -71,13 +71,17 @@ func ExtractObjectAttributes(keyMetadata *keystore.KeyMetadata) ObjectAttributes
 
 	// Try to extract tenant and namespace from key ID
 	// Format: "tenant:namespace:key-name" or "namespace:key-name"
+	const (
+		minPartsForTenant = 3 // tenant:namespace:key-name
+		minPartsForNS     = 2 // namespace:key-name
+	)
 	keyID := keyMetadata.ID
 	if keyID != "" {
 		parts := splitKeyID(keyID)
-		if len(parts) >= 3 {
+		if len(parts) >= minPartsForTenant {
 			attrs.Tenant = parts[0]
 			attrs.Namespace = parts[1]
-		} else if len(parts) == 2 {
+		} else if len(parts) == minPartsForNS {
 			attrs.Namespace = parts[0]
 		}
 	}
@@ -108,15 +112,15 @@ func splitKeyID(keyID string) []string {
 
 // BuildAttributes builds Attributes from subject, object, action and environment
 func BuildAttributes(
-	subjectAttrs SubjectAttributes,
-	objectAttrs ObjectAttributes,
+	subjectAttrs *SubjectAttributes,
+	objectAttrs *ObjectAttributes,
 	action string,
-	envAttrs EnvironmentAttributes,
+	envAttrs *EnvironmentAttributes,
 ) Attributes {
 	return Attributes{
-		Subject:     subjectAttrs,
-		Object:      objectAttrs,
+		Subject:     *subjectAttrs,
+		Object:      *objectAttrs,
 		Action:      action,
-		Environment: envAttrs,
+		Environment: *envAttrs,
 	}
 }

@@ -82,7 +82,18 @@ func MiddlewareWithConfig(config MiddlewareConfig) func(http.Handler) http.Handl
 				)
 			} else {
 				// Use legacy RBAC check
-				allowed, err = config.Engine.CheckPermission(identity.ID, permission, keyID)
+				// Extract tenant from identity metadata if available
+				tenant := ""
+				if identity.Metadata != nil {
+					if t, ok := identity.Metadata["tenant"]; ok {
+						tenant = t
+					}
+				}
+				if tenant != "" {
+					allowed, err = config.Engine.CheckPermission(identity.ID, permission, keyID, tenant)
+				} else {
+					allowed, err = config.Engine.CheckPermission(identity.ID, permission, keyID)
+				}
 			}
 
 			if err != nil {
@@ -119,7 +130,7 @@ func checkPermissionWithABAC(
 	permission Permission,
 	keyID string,
 	keyStore *keystore.Store,
-	logger *zap.Logger,
+	_ *zap.Logger,
 ) (bool, error) {
 	// Extract subject attributes
 	subjectAttrs := ExtractSubjectAttributes(identity)
@@ -155,14 +166,14 @@ func checkPermissionWithABAC(
 
 	// Build attributes
 	attrs := BuildAttributes(
-		subjectAttrs,
-		objectAttrs,
+		&subjectAttrs,
+		&objectAttrs,
 		string(permission),
-		envAttrs,
+		&envAttrs,
 	)
 
 	// Check permission with attributes
-	return engine.CheckPermissionWithAttributes(attrs)
+	return engine.CheckPermissionWithAttributes(&attrs)
 }
 
 // extractPermissionAndKey extracts permission and key ID from request

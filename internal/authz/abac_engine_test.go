@@ -27,7 +27,7 @@ func TestABACEngine_CheckAccess(t *testing.T) {
 		Object:  ObjectAttributes{ID: "key1"},
 		Action:  "encrypt",
 	}
-	allowed, err := engine.CheckAccess(attrs)
+	allowed, err := engine.CheckAccess(&attrs)
 	if err != nil {
 		t.Fatalf("Unexpected error: %v", err)
 	}
@@ -45,7 +45,7 @@ func TestABACEngine_CheckAccess(t *testing.T) {
 		},
 	})
 
-	allowed, err = engine.CheckAccess(attrs)
+	allowed, err = engine.CheckAccess(&attrs)
 	if err != nil {
 		t.Fatalf("Unexpected error: %v", err)
 	}
@@ -55,7 +55,7 @@ func TestABACEngine_CheckAccess(t *testing.T) {
 
 	// Test 3: Different user - should deny
 	attrs.Subject.ID = "user2"
-	allowed, err = engine.CheckAccess(attrs)
+	allowed, err = engine.CheckAccess(&attrs)
 	if err != nil {
 		t.Fatalf("Unexpected error: %v", err)
 	}
@@ -93,7 +93,7 @@ func TestABACEngine_Priority(t *testing.T) {
 		Object:  ObjectAttributes{ID: "key1"},
 		Action:  "encrypt",
 	}
-	allowed, err := engine.CheckAccess(attrs)
+	allowed, err := engine.CheckAccess(&attrs)
 	if err != nil {
 		t.Fatalf("Unexpected error: %v", err)
 	}
@@ -129,7 +129,7 @@ func TestABACEngine_TenantIsolation(t *testing.T) {
 		},
 		Action: "encrypt",
 	}
-	allowed, err := engine.CheckAccess(attrs)
+	allowed, err := engine.CheckAccess(&attrs)
 	if err != nil {
 		t.Fatalf("Unexpected error: %v", err)
 	}
@@ -139,7 +139,7 @@ func TestABACEngine_TenantIsolation(t *testing.T) {
 
 	// Test: different tenant - should deny
 	attrs.Object.Tenant = "tenant2"
-	allowed, err = engine.CheckAccess(attrs)
+	allowed, err = engine.CheckAccess(&attrs)
 	if err != nil {
 		t.Fatalf("Unexpected error: %v", err)
 	}
@@ -170,7 +170,7 @@ func TestABACEngine_StateBasedAccess(t *testing.T) {
 		},
 		Action: "encrypt",
 	}
-	allowed, err := engine.CheckAccess(attrs)
+	allowed, err := engine.CheckAccess(&attrs)
 	if err != nil {
 		t.Fatalf("Unexpected error: %v", err)
 	}
@@ -180,7 +180,7 @@ func TestABACEngine_StateBasedAccess(t *testing.T) {
 
 	// Test: disabled key - should deny
 	attrs.Object.State = "disabled"
-	allowed, err = engine.CheckAccess(attrs)
+	allowed, err = engine.CheckAccess(&attrs)
 	if err != nil {
 		t.Fatalf("Unexpected error: %v", err)
 	}
@@ -209,7 +209,7 @@ func TestABACEngine_EnableDisable(t *testing.T) {
 	}
 
 	// Should allow when enabled
-	allowed, err := engine.CheckAccess(attrs)
+	allowed, err := engine.CheckAccess(&attrs)
 	if err != nil {
 		t.Fatalf("Unexpected error: %v", err)
 	}
@@ -224,7 +224,7 @@ func TestABACEngine_EnableDisable(t *testing.T) {
 	}
 
 	// Should error when disabled
-	_, err = engine.CheckAccess(attrs)
+	_, err = engine.CheckAccess(&attrs)
 	if err == nil {
 		t.Error("Expected error when engine is disabled")
 	}
@@ -236,7 +236,7 @@ func TestABACEngine_EnableDisable(t *testing.T) {
 	}
 
 	// Should allow again
-	allowed, err = engine.CheckAccess(attrs)
+	allowed, err = engine.CheckAccess(&attrs)
 	if err != nil {
 		t.Fatalf("Unexpected error: %v", err)
 	}
@@ -265,7 +265,7 @@ func TestABACEngine_RemovePolicy(t *testing.T) {
 	}
 
 	// Should allow
-	allowed, err := engine.CheckAccess(attrs)
+	allowed, err := engine.CheckAccess(&attrs)
 	if err != nil {
 		t.Fatalf("Unexpected error: %v", err)
 	}
@@ -277,7 +277,7 @@ func TestABACEngine_RemovePolicy(t *testing.T) {
 	engine.RemovePolicy("allow-encrypt")
 
 	// Should deny
-	allowed, err = engine.CheckAccess(attrs)
+	allowed, err = engine.CheckAccess(&attrs)
 	if err != nil {
 		t.Fatalf("Unexpected error: %v", err)
 	}
