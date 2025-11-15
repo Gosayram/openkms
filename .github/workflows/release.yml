@@ -43,6 +43,16 @@ jobs:
             echo "Using tag version: $VERSION"
           fi
 
+          # Set repository URL for GoReleaser templates
+          GITHUB_REPO_URL="${{ github.server_url }}/${{ github.repository }}"
+          echo "GITHUB_REPO_URL=$GITHUB_REPO_URL" >> $GITHUB_ENV
+          echo "Repository URL: $GITHUB_REPO_URL"
+          
+          # Set Docker repository path (lowercase owner/repo for GHCR)
+          DOCKER_REPO_PATH=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
+          echo "DOCKER_REPO_PATH=$DOCKER_REPO_PATH" >> $GITHUB_ENV
+          echo "Docker repository path: $DOCKER_REPO_PATH"
+
       # Import GPG key for signing binaries and checksums
       - name: Import GPG key
         id: import_gpg
@@ -65,6 +75,13 @@ jobs:
           GPG_FINGERPRINT: ${{ steps.import_gpg.outputs.fingerprint }}
           GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
           RELEASE_VERSION: ${{ steps.version.outputs.version }}
+          # Repository URL for templates
+          GITHUB_REPO_URL: ${{ env.GITHUB_REPO_URL }}
+          # Docker repository path for templates
+          DOCKER_REPO_PATH: ${{ env.DOCKER_REPO_PATH }}
+          # Telegram announcement
+          TELEGRAM_TOKEN: ${{ secrets.TG_RELEASER_TOKEN }}
+          OPENKMS_CHAT_ID: ${{ secrets.OPENKMS_CHAT_ID }}
 
   build_docker:
     name: Build and Push Docker Images
