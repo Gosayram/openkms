@@ -34,9 +34,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Merge pull request #20 from Gosayram/feature/phase_3_4
 - Merge pull request #26 from Gosayram/feature/phase_3_5
 - Merge pull request #27 from Gosayram/fix/release_v0_3_6
+- Merge pull request #28 from Gosayram/fix/tpm_args
 
 ### Fixed
 - Pkgs url for announce description
+- Replace tpmutil.OpenTPM with os.OpenFile for device path support
 - Specific CGO=1 for C required libs
 
 ## [0.3.5] - 2025-11-15
