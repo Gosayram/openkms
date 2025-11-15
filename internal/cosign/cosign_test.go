@@ -19,9 +19,12 @@ import (
 	"context"
 	"crypto/ed25519"
 	"crypto/rand"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/sigstore/cosign/v3/pkg/cosign"
 )
 
 func TestNewSigner(t *testing.T) {
@@ -338,5 +341,337 @@ func TestVerifyBlob_InvalidSignatureFormat(t *testing.T) {
 	err = verifier.VerifyBlob(ctx, bytes.NewReader(testData), invalidSignature)
 	if err == nil {
 		t.Fatal("Expected error for invalid signature format")
+	}
+}
+
+func TestArtifactSignature_Validate(t *testing.T) {
+	tests := []struct {
+		name    string
+		sig     *ArtifactSignature
+		wantErr bool
+	}{
+		{
+			name: "valid signature",
+			sig: &ArtifactSignature{
+				Base64Signature: "dGVzdA==", // base64("test")
+			},
+			wantErr: false,
+		},
+		{
+			name: "empty signature",
+			sig: &ArtifactSignature{
+				Base64Signature: "",
+			},
+			wantErr: true,
+		},
+		{
+			name: "invalid base64",
+			sig: &ArtifactSignature{
+				Base64Signature: "invalid base64!!!",
+			},
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := tt.sig.Validate()
+			if (err != nil) != tt.wantErr {
+				t.Errorf("ArtifactSignature.Validate() error = %v, wantErr %v", err, tt.wantErr)
+			}
+		})
+	}
+}
+
+func TestArtifactSignature_MarshalJSON(t *testing.T) {
+	sig := &ArtifactSignature{
+		Base64Signature: "dGVzdA==",
+		Payload:         []byte("test payload"),
+	}
+
+	data, err := json.Marshal(sig)
+	if err != nil {
+		t.Fatalf("Failed to marshal: %v", err)
+	}
+
+	if len(data) == 0 {
+		t.Fatal("Marshaled data is empty")
+	}
+
+	// Verify it can be unmarshaled back
+	var unmarshaled ArtifactSignature
+	if err := json.Unmarshal(data, &unmarshaled); err != nil {
+		t.Fatalf("Failed to unmarshal: %v", err)
+	}
+
+	if unmarshaled.Base64Signature != sig.Base64Signature {
+		t.Errorf("Base64Signature mismatch: got %s, want %s", unmarshaled.Base64Signature, sig.Base64Signature)
+	}
+
+	if !bytes.Equal(unmarshaled.Payload, sig.Payload) {
+		t.Errorf("Payload mismatch: got %v, want %v", unmarshaled.Payload, sig.Payload)
+	}
+}
+
+func TestArtifactSignature_UnmarshalJSON(t *testing.T) {
+	tests := []struct {
+		name    string
+		data    string
+		wantErr bool
+	}{
+		{
+			name:    "standard format with payload",
+			data:    `{"base64Signature":"dGVzdA==","payload":"dGVzdCBwYXlsb2Fk"}`,
+			wantErr: false,
+		},
+		{
+			name:    "standard format without payload",
+			data:    `{"base64Signature":"dGVzdA=="}`,
+			wantErr: false,
+		},
+		{
+			name:    "invalid JSON",
+			data:    `{invalid json}`,
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var sig ArtifactSignature
+			err := json.Unmarshal([]byte(tt.data), &sig)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("ArtifactSignature.UnmarshalJSON() error = %v, wantErr %v", err, tt.wantErr)
+			}
+		})
+	}
+}
+
+func TestArtifactSignature_ToLocalSignedPayload(t *testing.T) {
+	sig := &ArtifactSignature{
+		Base64Signature: "dGVzdA==",
+		Payload:         []byte("test"),
+	}
+
+	lsp := sig.ToLocalSignedPayload()
+	if lsp.Base64Signature != sig.Base64Signature {
+		t.Errorf("Base64Signature mismatch: got %s, want %s", lsp.Base64Signature, sig.Base64Signature)
+	}
+}
+
+func TestFromLocalSignedPayload(t *testing.T) {
+	lsp := cosign.LocalSignedPayload{
+		Base64Signature: "dGVzdA==",
+	}
+	payload := []byte("test payload")
+
+	sig := FromLocalSignedPayload(lsp, payload)
+	if sig.Base64Signature != lsp.Base64Signature {
+		t.Errorf("Base64Signature mismatch: got %s, want %s", sig.Base64Signature, lsp.Base64Signature)
+	}
+
+	if !bytes.Equal(sig.Payload, payload) {
+		t.Errorf("Payload mismatch: got %v, want %v", sig.Payload, payload)
+	}
+}
+
+func TestParseArtifactSignature(t *testing.T) {
+	tests := []struct {
+		name    string
+		data    []byte
+		wantErr bool
+	}{
+		{
+			name:    "valid signature",
+			data:    []byte(`{"base64Signature":"dGVzdA==","payload":"dGVzdA=="}`),
+			wantErr: false,
+		},
+		{
+			name:    "invalid JSON",
+			data:    []byte(`{invalid}`),
+			wantErr: true,
+		},
+		{
+			name:    "missing signature",
+			data:    []byte(`{"payload":"dGVzdA=="}`),
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			sig, err := ParseArtifactSignature(tt.data)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("ParseArtifactSignature() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if !tt.wantErr && sig == nil {
+				t.Error("ParseArtifactSignature() returned nil signature without error")
+			}
+		})
+	}
+}
+
+func TestSignBlobStandard(t *testing.T) {
+	// Generate Ed25519 key pair
+	publicKey, privateKey, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatalf("Failed to generate key: %v", err)
+	}
+
+	// Create signer and verifier
+	signer, err := NewSigner(privateKey)
+	if err != nil {
+		t.Fatalf("Failed to create signer: %v", err)
+	}
+
+	verifier, err := NewVerifier(publicKey)
+	if err != nil {
+		t.Fatalf("Failed to create verifier: %v", err)
+	}
+
+	// Test data
+	testData := []byte("Hello, Cosign! Standard format test.")
+
+	// Sign using standard format
+	ctx := context.Background()
+	signatureData, err := signer.SignBlobStandard(ctx, bytes.NewReader(testData))
+	if err != nil {
+		t.Fatalf("Failed to sign blob: %v", err)
+	}
+
+	if len(signatureData) == 0 {
+		t.Fatal("Signature data is empty")
+	}
+
+	// Verify the signature (standard format doesn't include payload, so we provide it)
+	err = verifier.VerifyBlob(ctx, bytes.NewReader(testData), signatureData)
+	if err != nil {
+		t.Fatalf("Failed to verify blob: %v", err)
+	}
+}
+
+func TestSignBlob_ArtifactSignatureFormat(t *testing.T) {
+	// Generate Ed25519 key pair
+	publicKey, privateKey, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatalf("Failed to generate key: %v", err)
+	}
+
+	// Create signer
+	signer, err := NewSigner(privateKey)
+	if err != nil {
+		t.Fatalf("Failed to create signer: %v", err)
+	}
+
+	// Test data
+	testData := []byte("Hello, Cosign! Artifact signature format test.")
+
+	// Sign the blob
+	ctx := context.Background()
+	signatureData, err := signer.SignBlob(ctx, bytes.NewReader(testData))
+	if err != nil {
+		t.Fatalf("Failed to sign blob: %v", err)
+	}
+
+	// Parse the signature to verify it's in ArtifactSignature format
+	artifactSig, err := ParseArtifactSignature(signatureData)
+	if err != nil {
+		t.Fatalf("Failed to parse signature: %v", err)
+	}
+
+	// Verify signature structure
+	if artifactSig.Base64Signature == "" {
+		t.Fatal("Base64Signature is empty")
+	}
+
+	if len(artifactSig.Payload) == 0 {
+		t.Fatal("Payload is empty in ArtifactSignature format")
+	}
+
+	if !bytes.Equal(artifactSig.Payload, testData) {
+		t.Errorf("Payload mismatch: got %v, want %v", artifactSig.Payload, testData)
+	}
+
+	// Verify using verifier
+	verifier, err := NewVerifier(publicKey)
+	if err != nil {
+		t.Fatalf("Failed to create verifier: %v", err)
+	}
+
+	err = verifier.VerifyBlob(ctx, bytes.NewReader(testData), signatureData)
+	if err != nil {
+		t.Fatalf("Failed to verify blob: %v", err)
+	}
+}
+
+func TestVerifyBlob_StandardFormat(t *testing.T) {
+	// Generate Ed25519 key pair
+	publicKey, privateKey, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatalf("Failed to generate key: %v", err)
+	}
+
+	// Create signer and verifier
+	signer, err := NewSigner(privateKey)
+	if err != nil {
+		t.Fatalf("Failed to create signer: %v", err)
+	}
+
+	verifier, err := NewVerifier(publicKey)
+	if err != nil {
+		t.Fatalf("Failed to create verifier: %v", err)
+	}
+
+	// Test data
+	testData := []byte("Standard format verification test.")
+
+	// Sign using standard format (without payload)
+	ctx := context.Background()
+	signatureData, err := signer.SignBlobStandard(ctx, bytes.NewReader(testData))
+	if err != nil {
+		t.Fatalf("Failed to sign blob: %v", err)
+	}
+
+	// Verify - should work even without payload in signature
+	err = verifier.VerifyBlob(ctx, bytes.NewReader(testData), signatureData)
+	if err != nil {
+		t.Fatalf("Failed to verify blob: %v", err)
+	}
+}
+
+func TestVerifyBlob_PayloadMismatch(t *testing.T) {
+	// Generate Ed25519 key pair
+	publicKey, privateKey, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatalf("Failed to generate key: %v", err)
+	}
+
+	// Create signer and verifier
+	signer, err := NewSigner(privateKey)
+	if err != nil {
+		t.Fatalf("Failed to create signer: %v", err)
+	}
+
+	verifier, err := NewVerifier(publicKey)
+	if err != nil {
+		t.Fatalf("Failed to create verifier: %v", err)
+	}
+
+	// Test data
+	testData := []byte("Original data")
+	modifiedData := []byte("Modified data")
+
+	// Sign the blob (includes payload)
+	ctx := context.Background()
+	signatureData, err := signer.SignBlob(ctx, bytes.NewReader(testData))
+	if err != nil {
+		t.Fatalf("Failed to sign blob: %v", err)
+	}
+
+	// Try to verify with different data - should fail
+	err = verifier.VerifyBlob(ctx, bytes.NewReader(modifiedData), signatureData)
+	if err == nil {
+		t.Fatal("Expected verification to fail with payload mismatch")
 	}
 }

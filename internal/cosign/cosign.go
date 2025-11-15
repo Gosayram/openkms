@@ -44,6 +44,85 @@ const (
 	signatureFilePerms = 0o600
 )
 
+// ArtifactSignature represents a Cosign-compatible artifact signature format.
+// This structure supports both standard LocalSignedPayload format and extended format with payload.
+type ArtifactSignature struct {
+	// Base64Signature is the base64-encoded signature of the artifact
+	Base64Signature string `json:"base64Signature"`
+	// Payload is the optional artifact payload (blob data) included for verification convenience
+	Payload []byte `json:"payload,omitempty"`
+	// Bundle is an optional Sigstore bundle for transparency log integration
+	// Using interface{} to match Cosign's LocalSignedPayload which uses bundle.RekorBundle
+	Bundle interface{} `json:"bundle,omitempty"`
+}
+
+// ToLocalSignedPayload converts ArtifactSignature to Cosign LocalSignedPayload format
+func (a *ArtifactSignature) ToLocalSignedPayload() cosign.LocalSignedPayload {
+	lsp := cosign.LocalSignedPayload{
+		Base64Signature: a.Base64Signature,
+	}
+	// Bundle will be set if it's a valid RekorBundle type
+	// We skip it here as it requires specific type from cosign/bundle package
+	return lsp
+}
+
+// FromLocalSignedPayload creates ArtifactSignature from Cosign LocalSignedPayload
+func FromLocalSignedPayload(lsp cosign.LocalSignedPayload, payload []byte) *ArtifactSignature {
+	return &ArtifactSignature{
+		Base64Signature: lsp.Base64Signature,
+		Payload:         payload,
+		Bundle:          lsp.Bundle,
+	}
+}
+
+// MarshalJSON marshals ArtifactSignature to JSON
+func (a *ArtifactSignature) MarshalJSON() ([]byte, error) {
+	// Use standard JSON marshaling but ensure proper field names
+	type alias ArtifactSignature
+	return json.Marshal((*alias)(a))
+}
+
+// UnmarshalJSON unmarshals JSON to ArtifactSignature
+func (a *ArtifactSignature) UnmarshalJSON(data []byte) error {
+	// First try to unmarshal as LocalSignedPayload (standard Cosign format)
+	var lsp cosign.LocalSignedPayload
+	if err := json.Unmarshal(data, &lsp); err == nil && lsp.Base64Signature != "" {
+		// Try to extract payload if present in extended format
+		var extended struct {
+			cosign.LocalSignedPayload
+			Payload []byte `json:"payload,omitempty"`
+		}
+		if err := json.Unmarshal(data, &extended); err == nil {
+			a.Base64Signature = extended.Base64Signature
+			a.Payload = extended.Payload
+			a.Bundle = extended.Bundle
+			return nil
+		}
+		// Standard format without payload
+		a.Base64Signature = lsp.Base64Signature
+		a.Bundle = lsp.Bundle
+		return nil
+	}
+
+	// Fallback to direct unmarshaling
+	type alias ArtifactSignature
+	return json.Unmarshal(data, (*alias)(a))
+}
+
+// Validate validates the ArtifactSignature structure
+func (a *ArtifactSignature) Validate() error {
+	if a.Base64Signature == "" {
+		return fmt.Errorf("base64Signature is required")
+	}
+
+	// Validate base64 encoding
+	if _, err := base64.StdEncoding.DecodeString(a.Base64Signature); err != nil {
+		return fmt.Errorf("invalid base64 signature: %w", err)
+	}
+
+	return nil
+}
+
 // Signer provides Cosign-compatible signing functionality
 type Signer struct {
 	signer signature.Signer
@@ -68,7 +147,7 @@ func NewSigner(privateKey crypto.PrivateKey) (*Signer, error) {
 }
 
 // SignBlob signs a blob (file) and returns the signature in Cosign format
-// Returns a JSON-encoded LocalSignedPayload compatible with Cosign v3
+// Returns a JSON-encoded ArtifactSignature compatible with Cosign v3
 func (s *Signer) SignBlob(ctx context.Context, blob io.Reader) ([]byte, error) {
 	// Read the blob
 	blobData, err := io.ReadAll(blob)
@@ -82,28 +161,45 @@ func (s *Signer) SignBlob(ctx context.Context, blob io.Reader) ([]byte, error) {
 		return nil, fmt.Errorf("failed to sign blob: %w", err)
 	}
 
-	// Create a Cosign signature payload (LocalSignedPayload format)
-	// Note: Payload field is not part of LocalSignedPayload in v3, we store it separately
-	// for verification purposes
+	// Create artifact signature with payload included for verification convenience
+	artifactSig := &ArtifactSignature{
+		Base64Signature: base64.StdEncoding.EncodeToString(sig),
+		Payload:         blobData,
+	}
+
+	// Marshal to JSON
+	payloadJSON, err := json.Marshal(artifactSig)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal signature: %w", err)
+	}
+
+	return payloadJSON, nil
+}
+
+// SignBlobStandard signs a blob and returns signature in standard Cosign LocalSignedPayload format
+// without including the payload (payload must be provided separately during verification)
+func (s *Signer) SignBlobStandard(ctx context.Context, blob io.Reader) ([]byte, error) {
+	// Read the blob
+	blobData, err := io.ReadAll(blob)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read blob: %w", err)
+	}
+
+	// Sign the blob using Cosign v3 API
+	sig, err := s.signer.SignMessage(bytes.NewReader(blobData), signatureoptions.WithContext(ctx))
+	if err != nil {
+		return nil, fmt.Errorf("failed to sign blob: %w", err)
+	}
+
+	// Create standard LocalSignedPayload format (without payload)
 	payload := cosign.LocalSignedPayload{
 		Base64Signature: base64.StdEncoding.EncodeToString(sig),
 	}
 
-	// Create our own structure that includes the payload for verification
-	type signedPayload struct {
-		cosign.LocalSignedPayload
-		Payload []byte `json:"payload,omitempty"` // Include payload for verification
-	}
-
-	fullPayload := signedPayload{
-		LocalSignedPayload: payload,
-		Payload:            blobData,
-	}
-
 	// Marshal to JSON
-	payloadJSON, err := json.Marshal(fullPayload)
+	payloadJSON, err := json.Marshal(payload)
 	if err != nil {
-		return nil, fmt.Errorf("failed to marshal payload: %w", err)
+		return nil, fmt.Errorf("failed to marshal signature: %w", err)
 	}
 
 	return payloadJSON, nil
@@ -228,16 +324,17 @@ func NewVerifier(publicKey crypto.PublicKey) (*Verifier, error) {
 }
 
 // VerifyBlob verifies a Cosign signature for a blob
+// Supports both ArtifactSignature format and standard LocalSignedPayload format
 func (v *Verifier) VerifyBlob(ctx context.Context, blob io.Reader, signatureData []byte) error {
-	// Parse the signature payload (our custom format with payload included)
-	type signedPayload struct {
-		cosign.LocalSignedPayload
-		Payload []byte `json:"payload,omitempty"`
+	// Parse signature using ArtifactSignature (supports both formats)
+	var artifactSig ArtifactSignature
+	if err := json.Unmarshal(signatureData, &artifactSig); err != nil {
+		return fmt.Errorf("failed to unmarshal signature: %w", err)
 	}
 
-	var payload signedPayload
-	if err := json.Unmarshal(signatureData, &payload); err != nil {
-		return fmt.Errorf("failed to unmarshal signature: %w", err)
+	// Validate signature structure
+	if err := artifactSig.Validate(); err != nil {
+		return fmt.Errorf("invalid signature format: %w", err)
 	}
 
 	// Read the blob
@@ -246,13 +343,15 @@ func (v *Verifier) VerifyBlob(ctx context.Context, blob io.Reader, signatureData
 		return fmt.Errorf("failed to read blob: %w", err)
 	}
 
-	// Verify payload matches blob
-	if len(payload.Payload) > 0 && !bytes.Equal(payload.Payload, blobData) {
-		return fmt.Errorf("payload does not match blob")
+	// If payload is included in signature, verify it matches the blob
+	if len(artifactSig.Payload) > 0 {
+		if !bytes.Equal(artifactSig.Payload, blobData) {
+			return fmt.Errorf("payload in signature does not match provided blob")
+		}
 	}
 
 	// Decode signature
-	sig, err := base64.StdEncoding.DecodeString(payload.Base64Signature)
+	sig, err := base64.StdEncoding.DecodeString(artifactSig.Base64Signature)
 	if err != nil {
 		return fmt.Errorf("failed to decode signature: %w", err)
 	}
@@ -263,7 +362,7 @@ func (v *Verifier) VerifyBlob(ctx context.Context, blob io.Reader, signatureData
 		return fmt.Errorf("failed to create verifier: %w", err)
 	}
 
-	// Verify signature
+	// Verify signature against blob data
 	if err := verifier.VerifySignature(
 		bytes.NewReader(sig),
 		bytes.NewReader(blobData),
@@ -273,6 +372,20 @@ func (v *Verifier) VerifyBlob(ctx context.Context, blob io.Reader, signatureData
 	}
 
 	return nil
+}
+
+// ParseArtifactSignature parses signature data into ArtifactSignature structure
+func ParseArtifactSignature(signatureData []byte) (*ArtifactSignature, error) {
+	var artifactSig ArtifactSignature
+	if err := json.Unmarshal(signatureData, &artifactSig); err != nil {
+		return nil, fmt.Errorf("failed to parse signature: %w", err)
+	}
+
+	if err := artifactSig.Validate(); err != nil {
+		return nil, fmt.Errorf("invalid signature: %w", err)
+	}
+
+	return &artifactSig, nil
 }
 
 // VerifyBlobFile verifies a signature file for a blob file
