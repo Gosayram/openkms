@@ -20,6 +20,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"io"
+	"os"
 	"sync"
 
 	"github.com/google/go-tpm/legacy/tpm2"
@@ -58,7 +59,8 @@ func NewTPMProvider(config *TPMConfig) (*TPMProvider, error) {
 	}
 
 	// Open TPM device
-	rwc, err := tpmutil.OpenTPM(config.TPMPath)
+	//nolint:gosec // G304: TPM device path is validated and safe
+	rwc, err := os.OpenFile(config.TPMPath, os.O_RDWR, 0)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open TPM device %s: %w", config.TPMPath, err)
 	}
@@ -99,7 +101,8 @@ func findTPMDevice() string {
 
 	for _, path := range paths {
 		// Try to open to check if device exists
-		rwc, err := tpmutil.OpenTPM(path)
+		//nolint:gosec // G304: TPM device paths are predefined and safe
+		rwc, err := os.OpenFile(path, os.O_RDWR, 0)
 		if err == nil {
 			_ = rwc.Close() // Best effort cleanup
 			return path
