@@ -22,6 +22,7 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 
 	"github.com/Gosayram/openkms/internal/audit"
@@ -104,17 +105,13 @@ func initializeComponents(ctx context.Context, cfg *config.Config, logger *loggi
 		logger.Fatal("Failed to initialize master key", zap.Error(err))
 	}
 
-	masterKey, err := masterKeyProvider.GetMasterKey(ctx)
-	if err != nil {
-		logger.Fatal("Failed to get master key", zap.Error(err))
-	}
-
 	storageBackend, err := initializeStorage(cfg, logger.Logger)
 	if err != nil {
 		logger.Fatal("Failed to initialize storage", zap.Error(err))
 	}
 
-	envelopeBackend, err := storage.NewEnvelopeBackend(storageBackend, masterKey)
+	// Use new EnvelopeBackend with provider support (works with both direct and HSM providers)
+	envelopeBackend, err := storage.NewEnvelopeBackendWithProvider(storageBackend, masterKeyProvider.GetProvider())
 	if err != nil {
 		logger.Fatal("Failed to create envelope backend", zap.Error(err))
 	}
@@ -203,8 +200,37 @@ func initializeMasterKey(_ context.Context, cfg *config.Config, _ *zap.Logger) (
 	factory := masterkey.NewFactory()
 
 	providerConfig := map[string]string{
-		"env_var":   cfg.Security.MasterKeyEnvVar,
-		"file_path": cfg.Security.MasterKeyPath,
+		"env_var":      cfg.Security.MasterKeyEnvVar,
+		"file_path":    cfg.Security.MasterKeyPath,
+		"library_path": cfg.Security.HSMLibraryPath,
+		"token_label":  cfg.Security.HSMTokenLabel,
+		"key_label":    cfg.Security.HSMKeyLabel,
+		"key_id":       cfg.Security.HSMKeyID,
+		"tpm_path":     cfg.Security.TPMPath,
+	}
+
+	if cfg.Security.HSMSlotID > 0 {
+		providerConfig["slot_id"] = fmt.Sprintf("%d", cfg.Security.HSMSlotID)
+	}
+
+	// Add TPM PCR selection if specified
+	if len(cfg.Security.TPMPCRSelection) > 0 {
+		pcrStrs := make([]string, len(cfg.Security.TPMPCRSelection))
+		for i, pcr := range cfg.Security.TPMPCRSelection {
+			pcrStrs[i] = fmt.Sprintf("%d", pcr)
+		}
+		providerConfig["pcr_selection"] = strings.Join(pcrStrs, ",")
+	}
+
+	if cfg.Security.TPMUseSealed {
+		providerConfig["use_sealed"] = "true"
+	}
+
+	// Set TPM key_label if TPM provider is used
+	if cfg.Security.MasterKeyProvider == "tpm" {
+		if cfg.Security.TPMKeyLabel != "" {
+			providerConfig["key_label"] = cfg.Security.TPMKeyLabel
+		}
 	}
 
 	provider, err := factory.CreateProvider(cfg.Security.MasterKeyProvider, providerConfig)

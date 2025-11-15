@@ -29,9 +29,16 @@ var (
 // Provider defines the interface for master key providers
 type Provider interface {
 	// GetMasterKey retrieves the master key
+	// For HSM providers, this may return an error if the key is not extractable
 	GetMasterKey(ctx context.Context) ([]byte, error)
 	// RotateMasterKey rotates the master key (returns new key)
 	RotateMasterKey(ctx context.Context) ([]byte, error)
+	// WrapKey encrypts a key using the master key
+	// This is used for envelope encryption where the master key is in HSM
+	WrapKey(ctx context.Context, key []byte) ([]byte, error)
+	// UnwrapKey decrypts a key using the master key
+	// This is used for envelope decryption where the master key is in HSM
+	UnwrapKey(ctx context.Context, wrappedKey []byte) ([]byte, error)
 	// Close releases resources
 	Close() error
 }
@@ -71,4 +78,9 @@ func (m *Manager) RotateMasterKey(ctx context.Context) ([]byte, error) {
 // Close closes the manager
 func (m *Manager) Close() error {
 	return m.provider.Close()
+}
+
+// GetProvider returns the underlying provider
+func (m *Manager) GetProvider() Provider {
+	return m.provider
 }

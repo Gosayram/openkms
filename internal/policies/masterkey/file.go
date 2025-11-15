@@ -193,6 +193,30 @@ func (f *FileProvider) SaveMasterKey(masterKey []byte) error {
 	return f.saveMasterKey(masterKey)
 }
 
+// WrapKey encrypts a key using the master key
+//
+//nolint:revive // ctx parameter is required by Provider interface
+func (f *FileProvider) WrapKey(ctx context.Context, key []byte) ([]byte, error) {
+	masterKey, err := f.GetMasterKey(ctx)
+	if err != nil {
+		return nil, err
+	}
+	// Use AES-GCM for wrapping
+	return wrapKeyWithAESGCM(masterKey, key)
+}
+
+// UnwrapKey decrypts a key using the master key
+//
+//nolint:revive // ctx parameter is required by Provider interface
+func (f *FileProvider) UnwrapKey(ctx context.Context, wrappedKey []byte) ([]byte, error) {
+	masterKey, err := f.GetMasterKey(ctx)
+	if err != nil {
+		return nil, err
+	}
+	// Use AES-GCM for unwrapping
+	return unwrapKeyWithAESGCM(masterKey, wrappedKey)
+}
+
 // Close releases resources
 func (f *FileProvider) Close() error {
 	// Clear password from memory
@@ -200,4 +224,59 @@ func (f *FileProvider) Close() error {
 		f.password[i] = 0
 	}
 	return nil
+}
+
+// wrapKeyWithAESGCM encrypts a key using AES-GCM with the master key
+func wrapKeyWithAESGCM(masterKey, key []byte) ([]byte, error) {
+	if len(masterKey) != aes256MasterKeySize {
+		return nil, fmt.Errorf("invalid master key size: expected %d, got %d", aes256MasterKeySize, len(masterKey))
+	}
+
+	block, err := aes.NewCipher(masterKey)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create cipher: %w", err)
+	}
+
+	aead, err := cipher.NewGCM(block)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create GCM: %w", err)
+	}
+
+	nonce := make([]byte, aead.NonceSize())
+	if _, err := io.ReadFull(rand.Reader, nonce); err != nil {
+		return nil, fmt.Errorf("failed to generate nonce: %w", err)
+	}
+
+	ciphertext := aead.Seal(nonce, nonce, key, nil)
+	return ciphertext, nil
+}
+
+// unwrapKeyWithAESGCM decrypts a key using AES-GCM with the master key
+func unwrapKeyWithAESGCM(masterKey, wrappedKey []byte) ([]byte, error) {
+	if len(masterKey) != aes256MasterKeySize {
+		return nil, fmt.Errorf("invalid master key size: expected %d, got %d", aes256MasterKeySize, len(masterKey))
+	}
+
+	block, err := aes.NewCipher(masterKey)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create cipher: %w", err)
+	}
+
+	aead, err := cipher.NewGCM(block)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create GCM: %w", err)
+	}
+
+	nonceSize := aead.NonceSize()
+	if len(wrappedKey) < nonceSize {
+		return nil, fmt.Errorf("wrapped key too short: expected at least %d bytes, got %d", nonceSize, len(wrappedKey))
+	}
+
+	nonce, ciphertext := wrappedKey[:nonceSize], wrappedKey[nonceSize:]
+	key, err := aead.Open(nil, nonce, ciphertext, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to decrypt key: %w", err)
+	}
+
+	return key, nil
 }
