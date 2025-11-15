@@ -17,11 +17,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Add PKCS#11 and TPM 2.0 support for master key providers
+
+### Changed
+- Merge pull request #11 from Gosayram/fix/announce_description
+- Merge pull request #14 from Gosayram/feature/phase_3_3
+
+### Fixed
+- Pkgs url for announce description
+
+## [0.3.5] - 2025-11-15
+
+### Added
 - Added cosign public key for release artifacts validation
 - Implement high availability support with leader election
 
 ### Changed
 - Added logo and minimal improve README
+- Bump release
 - Merge pull request #10 from Gosayram/feature/telegram_announce
 - Merge pull request #7 from Gosayram/fix/cosign_key
 - Merge pull request #8 from Gosayram/docs/logo
@@ -89,7 +102,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Changelog mechanism for autogen
 
 
-[Unreleased]: https://github.com/Gosayram/openkms/compare/v0.3.4...HEAD
+[Unreleased]: https://github.com/Gosayram/openkms/compare/v0.3.5...HEAD
+[0.3.5]: https://github.com/Gosayram/openkms/compare/v0.3.4...v0.3.5
 [0.3.4]: https://github.com/Gosayram/openkms/compare/v0.3.3...v0.3.4
 [0.3.3]: https://github.com/Gosayram/openkms/compare/v0.3.2...v0.3.3
 [0.3.2]: https://github.com/Gosayram/openkms/compare/v0.3.1...v0.3.2
