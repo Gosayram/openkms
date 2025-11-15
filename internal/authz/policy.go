@@ -191,27 +191,76 @@ func (e *Engine) ListTenantPolicies(tenant string) []*Policy {
 
 // CheckPermission checks if identity has permission for a key
 // This is the legacy method that doesn't use ABAC attributes
-// If tenant is provided, checks tenant-scoped policies first, then global policies
+// If tenant is provided, checks tenant-scoped policies first, then global policies (inheritance)
 func (e *Engine) CheckPermission(identity string, permission Permission, keyID string, tenant ...string) (bool, error) {
 	// Use Casbin if enabled
 	if e.useCasbin && e.casbin != nil {
 		return e.casbin.CheckPermission(identity, permission, keyID)
 	}
 
-	// Check tenant-scoped policy first if tenant is provided
+	// Get effective policy (tenant-scoped with inheritance from global)
+	effectivePolicy, err := e.getEffectivePolicy(identity, tenant...)
+	if err != nil {
+		return false, err
+	}
+
+	return e.checkPolicyPermission(effectivePolicy, permission, keyID)
+}
+
+// getEffectivePolicy returns the effective policy for an identity, combining tenant-scoped and global policies
+// If tenant is provided and tenant-scoped policy exists, it inherits from global policy
+// Returns a merged policy that combines permissions and key patterns from both
+func (e *Engine) getEffectivePolicy(identity string, tenant ...string) (*Policy, error) {
+	var tenantPolicy *Policy
+	var globalPolicy *Policy
+	var hasTenantPolicy bool
+
+	// Get tenant-scoped policy if tenant is provided
 	if len(tenant) > 0 && tenant[0] != "" {
-		if policy, ok := e.GetTenantPolicy(tenant[0], identity); ok {
-			return e.checkPolicyPermission(policy, permission, keyID)
-		}
+		tenantPolicy, hasTenantPolicy = e.GetTenantPolicy(tenant[0], identity)
 	}
 
-	// Fallback to global policy
-	policy, ok := e.policies[identity]
-	if !ok {
-		return false, fmt.Errorf("no policy found for identity: %s", identity)
+	// Get global policy
+	globalPolicy, hasGlobalPolicy := e.policies[identity]
+
+	// If neither exists, return error
+	if !hasTenantPolicy && !hasGlobalPolicy {
+		return nil, fmt.Errorf("no policy found for identity: %s", identity)
 	}
 
-	return e.checkPolicyPermission(policy, permission, keyID)
+	// If only global policy exists, return it
+	if !hasTenantPolicy {
+		return globalPolicy, nil
+	}
+
+	// If only tenant policy exists, return it
+	if !hasGlobalPolicy {
+		return tenantPolicy, nil
+	}
+
+	// Both exist - merge them (tenant policy inherits from global)
+	// Create a new policy that combines both
+	effectivePolicy := &Policy{
+		Identity:    tenantPolicy.Identity,
+		Tenant:      tenantPolicy.Tenant,
+		Permissions: make(PermissionSet),
+		KeyPatterns: make([]string, 0),
+	}
+
+	// Merge permissions: start with global, then add/override with tenant
+	for perm := range globalPolicy.Permissions {
+		effectivePolicy.Permissions[perm] = true
+	}
+	for perm := range tenantPolicy.Permissions {
+		effectivePolicy.Permissions[perm] = true
+	}
+
+	// Merge key patterns: combine both sets
+	// Start with global patterns, then add tenant patterns
+	effectivePolicy.KeyPatterns = append(effectivePolicy.KeyPatterns, globalPolicy.KeyPatterns...)
+	effectivePolicy.KeyPatterns = append(effectivePolicy.KeyPatterns, tenantPolicy.KeyPatterns...)
+
+	return effectivePolicy, nil
 }
 
 // checkPolicyPermission checks if a policy grants the requested permission
@@ -260,18 +309,14 @@ func (e *Engine) CheckPermissionWithAttributes(attrs *Attributes) (bool, error) 
 	}
 
 	// Fallback to simple policy engine
-	// Check tenant-scoped policy first if tenant is available
-	var policy *Policy
-	var ok bool
+	// Get effective policy (tenant-scoped with inheritance from global)
+	var tenant string
 	if attrs.Subject.Tenant != "" {
-		policy, ok = e.GetTenantPolicy(attrs.Subject.Tenant, attrs.Subject.ID)
+		tenant = attrs.Subject.Tenant
 	}
-	if !ok {
-		// Fallback to global policy
-		policy, ok = e.policies[attrs.Subject.ID]
-		if !ok {
-			return false, fmt.Errorf("no policy found for identity: %s", attrs.Subject.ID)
-		}
+	policy, err := e.getEffectivePolicy(attrs.Subject.ID, tenant)
+	if err != nil {
+		return false, err
 	}
 
 	// Check if identity has the permission

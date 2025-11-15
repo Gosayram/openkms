@@ -19,6 +19,14 @@ import (
 	"time"
 )
 
+// Policy effect constants
+const (
+	// EffectAllow represents an allow effect in ABAC policies
+	EffectAllow = "allow"
+	// EffectDeny represents a deny effect in ABAC policies
+	EffectDeny = "deny"
+)
+
 // Attributes represents attributes used in ABAC decisions
 type Attributes struct {
 	// Subject attributes (user/identity attributes)
@@ -189,19 +197,20 @@ func (e *ABACEngine) RemoveTenantPolicy(tenant, name string) {
 // CheckAccess evaluates access decision based on attributes
 // Returns (allowed, error)
 // If tenant isolation is enabled, only evaluates tenant-scoped policies
+// Otherwise, evaluates tenant-scoped policies first, then falls back to global policies (inheritance)
 func (e *ABACEngine) CheckAccess(attrs *Attributes) (bool, error) {
 	if !e.enabled {
 		return false, fmt.Errorf("ABAC engine is disabled")
 	}
 
-	// If tenant isolation is enabled, check tenant-scoped policies first
+	// If tenant isolation is enabled, check tenant-scoped policies only
 	if e.tenantIsolation && attrs.Subject.Tenant != "" {
 		if tenantPolicies, ok := e.tenantPolicies[attrs.Subject.Tenant]; ok {
 			// Evaluate tenant-scoped policies in priority order
 			for _, policy := range tenantPolicies {
 				if policy.Condition(*attrs) {
 					// Policy matched, return its effect
-					return policy.Effect == "allow", nil
+					return policy.Effect == EffectAllow, nil
 				}
 			}
 		}
@@ -209,11 +218,25 @@ func (e *ABACEngine) CheckAccess(attrs *Attributes) (bool, error) {
 		return false, nil
 	}
 
+	// Tenant isolation is disabled - check tenant-scoped policies first, then global (inheritance)
+	if attrs.Subject.Tenant != "" {
+		if tenantPolicies, ok := e.tenantPolicies[attrs.Subject.Tenant]; ok {
+			// Evaluate tenant-scoped policies in priority order
+			for _, policy := range tenantPolicies {
+				if policy.Condition(*attrs) {
+					// Policy matched, return its effect
+					return policy.Effect == EffectAllow, nil
+				}
+			}
+		}
+		// If no tenant policy matched, fall through to global policies (inheritance)
+	}
+
 	// Evaluate global policies in priority order
 	for _, policy := range e.policies {
 		if policy.Condition(*attrs) {
 			// Policy matched, return its effect
-			return policy.Effect == "allow", nil
+			return policy.Effect == EffectAllow, nil
 		}
 	}
 

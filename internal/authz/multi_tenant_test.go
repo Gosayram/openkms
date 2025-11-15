@@ -336,3 +336,334 @@ func TestABACTenantPolicyManagement(t *testing.T) {
 		t.Errorf("Expected 0 policies after removal, got %d", len(policies))
 	}
 }
+
+func TestPolicyInheritance_RBAC(t *testing.T) {
+	engine := NewEngine()
+
+	// Create global policy with view and encrypt permissions
+	globalPolicy := &Policy{
+		Identity:    "user1",
+		Tenant:      "",
+		Permissions: NewPermissionSet(PermissionView, PermissionEncrypt),
+		KeyPatterns: []string{"global:*"},
+	}
+
+	// Create tenant-scoped policy with only decrypt permission
+	tenantPolicy := &Policy{
+		Identity:    "user1",
+		Tenant:      "tenant1",
+		Permissions: NewPermissionSet(PermissionDecrypt),
+		KeyPatterns: []string{"tenant1:*"},
+	}
+
+	engine.AddPolicy(globalPolicy)
+	engine.AddPolicy(tenantPolicy)
+
+	// Test: tenant policy should inherit view permission from global
+	allowed, err := engine.CheckPermission("user1", PermissionView, "global:key1", "tenant1")
+	if err != nil {
+		t.Fatalf("Unexpected error: %v", err)
+	}
+	if !allowed {
+		t.Error("Expected allow for view permission inherited from global policy")
+	}
+
+	// Test: tenant policy should inherit encrypt permission from global
+	allowed, err = engine.CheckPermission("user1", PermissionEncrypt, "global:key1", "tenant1")
+	if err != nil {
+		t.Fatalf("Unexpected error: %v", err)
+	}
+	if !allowed {
+		t.Error("Expected allow for encrypt permission inherited from global policy")
+	}
+
+	// Test: tenant policy should have its own decrypt permission
+	allowed, err = engine.CheckPermission("user1", PermissionDecrypt, "tenant1:key1", "tenant1")
+	if err != nil {
+		t.Fatalf("Unexpected error: %v", err)
+	}
+	if !allowed {
+		t.Error("Expected allow for decrypt permission from tenant policy")
+	}
+
+	// Test: tenant policy should have access to both global and tenant key patterns
+	allowed, err = engine.CheckPermission("user1", PermissionView, "global:key1", "tenant1")
+	if err != nil {
+		t.Fatalf("Unexpected error: %v", err)
+	}
+	if !allowed {
+		t.Error("Expected allow for global key pattern")
+	}
+
+	allowed, err = engine.CheckPermission("user1", PermissionView, "tenant1:key1", "tenant1")
+	if err != nil {
+		t.Fatalf("Unexpected error: %v", err)
+	}
+	if !allowed {
+		t.Error("Expected allow for tenant key pattern")
+	}
+
+	// Test: permission not in either policy should be denied
+	allowed, err = engine.CheckPermission("user1", PermissionDelete, "tenant1:key1", "tenant1")
+	if err != nil {
+		t.Fatalf("Unexpected error: %v", err)
+	}
+	if allowed {
+		t.Error("Expected deny for delete permission not in any policy")
+	}
+}
+
+func TestPolicyInheritance_RBAC_KeyPatterns(t *testing.T) {
+	engine := NewEngine()
+
+	// Create global policy with all keys pattern
+	globalPolicy := &Policy{
+		Identity:    "user1",
+		Tenant:      "",
+		Permissions: NewPermissionSet(PermissionView),
+		KeyPatterns: []string{"*"}, // All keys
+	}
+
+	// Create tenant-scoped policy with specific pattern
+	tenantPolicy := &Policy{
+		Identity:    "user1",
+		Tenant:      "tenant1",
+		Permissions: NewPermissionSet(PermissionView),
+		KeyPatterns: []string{"tenant1:*"}, // Only tenant1 keys
+	}
+
+	engine.AddPolicy(globalPolicy)
+	engine.AddPolicy(tenantPolicy)
+
+	// Test: tenant policy should have access to tenant1 keys (from tenant pattern)
+	allowed, err := engine.CheckPermission("user1", PermissionView, "tenant1:key1", "tenant1")
+	if err != nil {
+		t.Fatalf("Unexpected error: %v", err)
+	}
+	if !allowed {
+		t.Error("Expected allow for tenant1 key pattern")
+	}
+
+	// Test: tenant policy should also have access to other keys (from global pattern)
+	// Since we merge patterns, both global and tenant patterns should be available
+	allowed, err = engine.CheckPermission("user1", PermissionView, "other:key1", "tenant1")
+	if err != nil {
+		t.Fatalf("Unexpected error: %v", err)
+	}
+	if !allowed {
+		t.Error("Expected allow for other keys from global pattern (inherited)")
+	}
+}
+
+func TestPolicyInheritance_RBAC_OnlyTenantPolicy(t *testing.T) {
+	engine := NewEngine()
+
+	// Create only tenant-scoped policy (no global)
+	tenantPolicy := &Policy{
+		Identity:    "user1",
+		Tenant:      "tenant1",
+		Permissions: NewPermissionSet(PermissionView, PermissionEncrypt),
+		KeyPatterns: []string{"tenant1:*"},
+	}
+
+	engine.AddPolicy(tenantPolicy)
+
+	// Test: should work with tenant policy only
+	allowed, err := engine.CheckPermission("user1", PermissionView, "tenant1:key1", "tenant1")
+	if err != nil {
+		t.Fatalf("Unexpected error: %v", err)
+	}
+	if !allowed {
+		t.Error("Expected allow for tenant policy only")
+	}
+
+	// Test: should not work without tenant
+	_, err = engine.CheckPermission("user1", PermissionView, "tenant1:key1")
+	if err == nil {
+		t.Error("Expected error when no global policy exists")
+	}
+}
+
+func TestPolicyInheritance_ABAC(t *testing.T) {
+	engine := NewABACEngine()
+	// Tenant isolation is disabled by default, so inheritance should work
+
+	// Create global ABAC policy
+	globalPolicy := ABACPolicy{
+		Name:     "global-encrypt",
+		Effect:   "allow",
+		Priority: 1,
+		Condition: func(attrs Attributes) bool {
+			return attrs.Action == "encrypt"
+		},
+	}
+	engine.AddPolicy(globalPolicy)
+
+	// Create tenant-scoped ABAC policy
+	tenantPolicy := ABACPolicy{
+		Name:     "tenant-decrypt",
+		Effect:   "allow",
+		Priority: 1,
+		Condition: func(attrs Attributes) bool {
+			return attrs.Subject.Tenant == "tenant1" && attrs.Action == "decrypt"
+		},
+	}
+	engine.AddTenantPolicy("tenant1", tenantPolicy)
+
+	// Test: tenant user should be able to encrypt (inherited from global)
+	attrs1 := Attributes{
+		Subject: SubjectAttributes{
+			ID:     "user1",
+			Tenant: "tenant1",
+		},
+		Object: ObjectAttributes{ID: "key1"},
+		Action: "encrypt",
+	}
+	allowed, err := engine.CheckAccess(&attrs1)
+	if err != nil {
+		t.Fatalf("Unexpected error: %v", err)
+	}
+	if !allowed {
+		t.Error("Expected allow for encrypt action inherited from global policy")
+	}
+
+	// Test: tenant user should be able to decrypt (from tenant policy)
+	attrs2 := Attributes{
+		Subject: SubjectAttributes{
+			ID:     "user1",
+			Tenant: "tenant1",
+		},
+		Object: ObjectAttributes{ID: "key1"},
+		Action: "decrypt",
+	}
+	allowed, err = engine.CheckAccess(&attrs2)
+	if err != nil {
+		t.Fatalf("Unexpected error: %v", err)
+	}
+	if !allowed {
+		t.Error("Expected allow for decrypt action from tenant policy")
+	}
+
+	// Test: action not in any policy should be denied
+	attrs3 := Attributes{
+		Subject: SubjectAttributes{
+			ID:     "user1",
+			Tenant: "tenant1",
+		},
+		Object: ObjectAttributes{ID: "key1"},
+		Action: "delete",
+	}
+	allowed, err = engine.CheckAccess(&attrs3)
+	if err != nil {
+		t.Fatalf("Unexpected error: %v", err)
+	}
+	if allowed {
+		t.Error("Expected deny for delete action not in any policy")
+	}
+}
+
+func TestPolicyInheritance_ABAC_WithTenantIsolation(t *testing.T) {
+	engine := NewABACEngine()
+	engine.EnableTenantIsolation()
+	// With tenant isolation enabled, inheritance should NOT work
+
+	// Create global ABAC policy
+	globalPolicy := ABACPolicy{
+		Name:     "global-encrypt",
+		Effect:   "allow",
+		Priority: 1,
+		Condition: func(attrs Attributes) bool {
+			return attrs.Action == "encrypt"
+		},
+	}
+	engine.AddPolicy(globalPolicy)
+
+	// Create tenant-scoped ABAC policy
+	tenantPolicy := ABACPolicy{
+		Name:     "tenant-decrypt",
+		Effect:   "allow",
+		Priority: 1,
+		Condition: func(attrs Attributes) bool {
+			return attrs.Subject.Tenant == "tenant1" && attrs.Action == "decrypt"
+		},
+	}
+	engine.AddTenantPolicy("tenant1", tenantPolicy)
+
+	// Test: tenant user should NOT be able to encrypt (inheritance disabled)
+	attrs1 := Attributes{
+		Subject: SubjectAttributes{
+			ID:     "user1",
+			Tenant: "tenant1",
+		},
+		Object: ObjectAttributes{ID: "key1"},
+		Action: "encrypt",
+	}
+	allowed, err := engine.CheckAccess(&attrs1)
+	if err != nil {
+		t.Fatalf("Unexpected error: %v", err)
+	}
+	if allowed {
+		t.Error("Expected deny for encrypt action when tenant isolation is enabled (no inheritance)")
+	}
+
+	// Test: tenant user should be able to decrypt (from tenant policy)
+	attrs2 := Attributes{
+		Subject: SubjectAttributes{
+			ID:     "user1",
+			Tenant: "tenant1",
+		},
+		Object: ObjectAttributes{ID: "key1"},
+		Action: "decrypt",
+	}
+	allowed, err = engine.CheckAccess(&attrs2)
+	if err != nil {
+		t.Fatalf("Unexpected error: %v", err)
+	}
+	if !allowed {
+		t.Error("Expected allow for decrypt action from tenant policy")
+	}
+}
+
+func TestPolicyInheritance_ABAC_Priority(t *testing.T) {
+	engine := NewABACEngine()
+	// Tenant isolation is disabled by default
+
+	// Create global policy with lower priority
+	globalPolicy := ABACPolicy{
+		Name:     "global-allow",
+		Effect:   "allow",
+		Priority: 1,
+		Condition: func(attrs Attributes) bool {
+			return attrs.Action == "encrypt"
+		},
+	}
+	engine.AddPolicy(globalPolicy)
+
+	// Create tenant-scoped policy with higher priority that denies
+	tenantPolicy := ABACPolicy{
+		Name:     "tenant-deny",
+		Effect:   "deny",
+		Priority: 10, // Higher priority
+		Condition: func(attrs Attributes) bool {
+			return attrs.Subject.Tenant == "tenant1" && attrs.Action == "encrypt"
+		},
+	}
+	engine.AddTenantPolicy("tenant1", tenantPolicy)
+
+	// Test: tenant user should be denied (tenant policy has higher priority)
+	attrs := Attributes{
+		Subject: SubjectAttributes{
+			ID:     "user1",
+			Tenant: "tenant1",
+		},
+		Object: ObjectAttributes{ID: "key1"},
+		Action: "encrypt",
+	}
+	allowed, err := engine.CheckAccess(&attrs)
+	if err != nil {
+		t.Fatalf("Unexpected error: %v", err)
+	}
+	if allowed {
+		t.Error("Expected deny for encrypt action (tenant deny policy has higher priority)")
+	}
+}
