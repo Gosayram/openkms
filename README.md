@@ -19,12 +19,29 @@ OpenKMS is designed as a modular, secure, and scalable key management service th
 
 ### Security
 
-- **Multiple Storage Backends**: Support for BoltDB, PostgreSQL, and file-based storage
+- **Multiple Storage Backends**: Support for BoltDB, PostgreSQL, etcd, and file-based storage
 - **Envelope Encryption**: All keys are encrypted at rest using envelope encryption
+- **Master Key Providers**: Multiple options for master key management:
+  - Environment variable (development only)
+  - Password-encrypted file
+  - PKCS#11 HSM integration
+  - TPM 2.0 hardware security module
 - **Multiple Authentication Methods**: Static tokens, mTLS, and OIDC/JWT authentication
-- **Authorization**: Role-based access control (RBAC) using Casbin
+- **Advanced Authorization**: 
+  - Role-based access control (RBAC) using Casbin
+  - Attribute-based access control (ABAC) with flexible policy evaluation
+  - Multi-tenant support with namespace isolation
+  - Policy inheritance and tenant-scoped policies
 - **Audit Logging**: Comprehensive audit logging with cryptographic signing
 - **Audit Retention**: Configurable retention policies for audit logs
+
+### High Availability
+
+- **Leader Election**: Automatic leader election using PostgreSQL advisory locks or etcd leases
+- **Read Replicas**: Support for read-only replicas to distribute read load
+- **Sticky Sessions**: Client session affinity for consistent routing
+- **Health Checks**: Comprehensive health check endpoints for service monitoring
+- **Multi-Node Support**: Deploy multiple instances with shared storage coordination
 
 ### Operations
 
@@ -35,14 +52,13 @@ OpenKMS is designed as a modular, secure, and scalable key management service th
 
 ## Project Status
 
-This is a skeleton implementation. The project provides a solid foundation with core functionality implemented, but it is not production-ready and requires additional work for specific use cases. Key areas that may need enhancement include:
+This is a skeleton implementation. The project provides a solid foundation with core functionality implemented, including high availability features, multiple storage backends, HSM/TPM support, and advanced authorization. However, it is not production-ready and requires additional work for specific use cases. Key areas that may need enhancement include:
 
-- Production-grade storage backends
 - Advanced key rotation policies
-- High availability and clustering
-- Backup and disaster recovery
-- Performance optimization
-- Additional security hardening
+- Backup and disaster recovery procedures
+- Performance optimization and load testing
+- Additional security hardening and compliance certifications
+- Comprehensive documentation and deployment guides
 
 ## Getting Started
 
@@ -101,15 +117,16 @@ openkms/
   internal/
     audit/             # Audit logging and signing
     authn/             # Authentication
-    authz/             # Authorization (Casbin)
+    authz/             # Authorization (RBAC, ABAC, Casbin)
     config/            # Configuration management
     cryptoengine/      # Cryptographic operations
+    ha/                # High availability (leader election, read replicas)
     keystore/          # Key storage and management
     logging/           # Structured logging
     metrics/           # Prometheus metrics
-    policies/          # Security policies
+    policies/          # Security policies (master key providers)
     server/            # HTTP server and handlers
-    storage/           # Storage backends
+    storage/           # Storage backends (BoltDB, PostgreSQL, etcd)
   pkg/
     sdk/               # Client SDK
 ```
