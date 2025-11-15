@@ -20,11 +20,18 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
+const (
+	// migrationVersion1 is the version number for the initial schema migration
+	migrationVersion1 = 1
+	// migrationVersion2 is the version number for the leader election table migration
+	migrationVersion2 = 2
+)
+
 // GetMigrations returns the list of all database migrations
 func GetMigrations() []Migration {
 	return []Migration{
 		{
-			Version:     1,
+			Version:     migrationVersion1,
 			Description: "Initial schema - create storage_data table",
 			Up: func(tx pgx.Tx) error {
 				createTableSQL := `
@@ -45,20 +52,28 @@ func GetMigrations() []Migration {
 				return err
 			},
 		},
-		// Future migrations can be added here
-		// {
-		// 	Version:     2,
-		// 	Description: "Add index for faster lookups",
-		// 	Up: func(tx pgx.Tx) error {
-		//nolint:lll // SQL statement is necessarily long
-		// 		_, err := tx.Exec(context.Background(),
-		// 			"CREATE INDEX IF NOT EXISTS idx_storage_data_updated_at ON storage_data(updated_at)")
-		// 		return err
-		// 	},
-		// 	Down: func(tx pgx.Tx) error {
-		// 		_, err := tx.Exec(context.Background(), "DROP INDEX IF EXISTS idx_storage_data_updated_at")
-		// 		return err
-		// 	},
-		// },
+		{
+			Version:     migrationVersion2,
+			Description: "Create leader_election table for HA",
+			Up: func(tx pgx.Tx) error {
+				createTableSQL := `
+					CREATE TABLE IF NOT EXISTS leader_election (
+						id VARCHAR(255) PRIMARY KEY,
+						node_id VARCHAR(255) NOT NULL,
+						acquired_at TIMESTAMP NOT NULL DEFAULT NOW(),
+						expires_at TIMESTAMP NOT NULL,
+						UNIQUE(node_id)
+					);
+					
+					CREATE INDEX IF NOT EXISTS idx_leader_election_expires_at ON leader_election(expires_at);
+				`
+				_, err := tx.Exec(context.Background(), createTableSQL)
+				return err
+			},
+			Down: func(tx pgx.Tx) error {
+				_, err := tx.Exec(context.Background(), "DROP TABLE IF EXISTS leader_election")
+				return err
+			},
+		},
 	}
 }

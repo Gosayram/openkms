@@ -17,6 +17,7 @@ package server
 import (
 	"context"
 	"crypto/tls"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"time"
@@ -34,10 +35,11 @@ const (
 
 // Server represents the HTTP server
 type Server struct {
-	router     *chi.Mux
-	httpServer *http.Server
-	logger     *zap.Logger
-	config     *Config
+	router        *chi.Mux
+	httpServer    *http.Server
+	logger        *zap.Logger
+	config        *Config
+	healthChecker HealthChecker
 }
 
 // Config contains server configuration
@@ -66,13 +68,7 @@ func NewServer(config *Config, logger *zap.Logger) *Server {
 	router.Use(middleware.Timeout(defaultRequestTimeout))
 	router.Use(MetricsMiddleware)
 
-	// Health check endpoint
-	router.Get("/health", func(w http.ResponseWriter, _ *http.Request) {
-		// Simple health check - can be extended to check storage, etc.
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte(`{"status":"healthy"}`))
-	})
+	// Health check endpoint will be registered via RegisterHealthChecker
 
 	// Metrics endpoint
 	router.Handle("/metrics", promhttp.Handler())
@@ -196,4 +192,72 @@ func (s *Server) buildTLSConfig() (*tls.Config, error) {
 // Router returns the chi router (for testing)
 func (s *Server) Router() *chi.Mux {
 	return s.router
+}
+
+// HealthChecker interface for health checking
+type HealthChecker interface {
+	Check(ctx context.Context) (*HealthCheckResult, error)
+}
+
+// HealthCheckResult represents health check result for server
+type HealthCheckResult struct {
+	Status      string                 `json:"status"`
+	Message     string                 `json:"message,omitempty"`
+	Timestamp   string                 `json:"timestamp"`
+	Components  map[string]interface{} `json:"components,omitempty"`
+	Leader      *LeaderInfo            `json:"leader,omitempty"`
+	ReadReplica *ReadReplicaInfo       `json:"read_replica,omitempty"`
+}
+
+// LeaderInfo contains leader election information
+type LeaderInfo struct {
+	IsLeader bool   `json:"is_leader"`
+	NodeID   string `json:"node_id,omitempty"`
+}
+
+// ReadReplicaInfo contains read replica information
+type ReadReplicaInfo struct {
+	Enabled    bool   `json:"enabled"`
+	Available  bool   `json:"available"`
+	Connection string `json:"connection,omitempty"`
+}
+
+// RegisterHealthChecker registers a health checker
+func (s *Server) RegisterHealthChecker(checker HealthChecker) {
+	s.healthChecker = checker
+
+	// Register health check endpoint
+	s.router.Get("/health", func(w http.ResponseWriter, r *http.Request) {
+		if s.healthChecker != nil {
+			health, err := s.healthChecker.Check(r.Context())
+			if err != nil {
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusServiceUnavailable)
+				_, _ = fmt.Fprintf(w, `{"status":"unhealthy","error":"%s"}`, err.Error())
+				return
+			}
+
+			w.Header().Set("Content-Type", "application/json")
+			statusCode := http.StatusOK
+			switch health.Status {
+			case "unhealthy":
+				statusCode = http.StatusServiceUnavailable
+			case "degraded":
+				statusCode = http.StatusOK // Degraded is still OK, but indicates issues
+			}
+			w.WriteHeader(statusCode)
+
+			jsonData, err := json.Marshal(health)
+			if err != nil {
+				_, _ = w.Write([]byte(`{"status":"unhealthy","error":"failed to marshal health check"}`))
+				return
+			}
+			_, _ = w.Write(jsonData)
+		} else {
+			// Fallback to simple health check
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{"status":"healthy"}`))
+		}
+	})
 }
