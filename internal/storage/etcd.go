@@ -37,6 +37,10 @@ const (
 	defaultEtcdRetryMaxAttempts = 3
 	// defaultEtcdRetryBackoff is the backoff duration between retries
 	defaultEtcdRetryBackoff = 100 * time.Millisecond
+	// defaultEtcdWatchChannelSize is the default size for watch event channel
+	defaultEtcdWatchChannelSize = 10
+	// defaultEtcdLeaderElectionTTL is the default TTL for etcd leader election session
+	defaultEtcdLeaderElectionTTL = 10
 )
 
 // EtcdBackend is an etcd-based storage backend
@@ -118,7 +122,10 @@ func NewEtcdBackend(config EtcdConfig) (*EtcdBackend, error) {
 
 	_, err = client.Status(ctx, config.Endpoints[0])
 	if err != nil {
-		client.Close()
+		if closeErr := client.Close(); closeErr != nil {
+			// Log close error but return original error
+			_ = closeErr
+		}
 		return nil, fmt.Errorf("failed to connect to etcd: %w", err)
 	}
 
@@ -520,7 +527,7 @@ func (e *EtcdBackend) Watch(ctx context.Context, prefix string) (<-chan WatchEve
 	prefixedPrefix := e.prefixKey(prefix)
 	watchChan := e.client.Watch(ctx, prefixedPrefix, clientv3.WithPrefix())
 
-	eventChan := make(chan WatchEvent, 10)
+	eventChan := make(chan WatchEvent, defaultEtcdWatchChannelSize)
 
 	go func() {
 		defer close(eventChan)
@@ -588,7 +595,7 @@ func (e *EtcdBackend) NewLeaderElection(ctx context.Context, electionKey string)
 	}
 
 	// Create session with lease
-	session, err := concurrency.NewSession(e.client, concurrency.WithTTL(10))
+	session, err := concurrency.NewSession(e.client, concurrency.WithTTL(defaultEtcdLeaderElectionTTL))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create session: %w", err)
 	}

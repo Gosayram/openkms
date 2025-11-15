@@ -34,6 +34,28 @@ const (
 	defaultIdleTimeout = 120 * time.Second
 	// defaultMetricsPort is the default metrics server port
 	defaultMetricsPort = 9090
+	// defaultEtcdDialTimeout is the default etcd dial timeout
+	defaultEtcdDialTimeout = 5 * time.Second
+	// defaultEtcdRequestTimeout is the default etcd request timeout
+	defaultEtcdRequestTimeout = 3 * time.Second
+	// defaultLeaderLockID is the default leader lock ID
+	defaultLeaderLockID = 123456789
+	// defaultLeaderTTL is the default leader TTL in seconds
+	defaultLeaderTTL = 30
+	// defaultLeaderRefreshInterval is the default leader refresh interval
+	defaultLeaderRefreshInterval = 10 * time.Second
+	// defaultLeaderCheckInterval is the default leader check interval
+	defaultLeaderCheckInterval = 5 * time.Second
+	// defaultReadReplicaMaxConns is the default read replica max connections
+	defaultReadReplicaMaxConns = 10
+	// defaultReadReplicaMinConns is the default read replica min connections
+	defaultReadReplicaMinConns = 2
+	// defaultReadReplicaConnMaxLifetime is the default read replica connection max lifetime
+	defaultReadReplicaConnMaxLifetime = 5 * time.Minute
+	// defaultReadReplicaConnMaxIdleTime is the default read replica connection max idle time
+	defaultReadReplicaConnMaxIdleTime = 10 * time.Minute
+	// defaultStickySessionTTL is the default sticky session TTL
+	defaultStickySessionTTL = 24 * time.Hour
 )
 
 // Config represents the application configuration
@@ -43,6 +65,7 @@ type Config struct {
 	Security SecurityConfig
 	Logging  LoggingConfig
 	Metrics  MetricsConfig
+	HA       HAConfig
 }
 
 // ServerConfig contains server-related configuration
@@ -102,6 +125,42 @@ type MetricsConfig struct {
 	Port    int
 }
 
+// HAConfig contains high availability configuration
+type HAConfig struct {
+	Enabled        bool
+	NodeID         string
+	LeaderElection LeaderElectionConfig
+	ReadReplica    ReadReplicaConfig
+	StickySessions StickySessionsConfig
+}
+
+// LeaderElectionConfig contains leader election configuration
+type LeaderElectionConfig struct {
+	Enabled         bool
+	UseAdvisoryLock bool
+	LockID          int64
+	TTL             int
+	RefreshInterval time.Duration
+	CheckInterval   time.Duration
+}
+
+// ReadReplicaConfig contains read replica configuration
+type ReadReplicaConfig struct {
+	Enabled         bool
+	Connection      string
+	MaxConns        int32
+	MinConns        int32
+	ConnMaxLifetime time.Duration
+	ConnMaxIdleTime time.Duration
+}
+
+// StickySessionsConfig contains sticky sessions configuration
+type StickySessionsConfig struct {
+	Enabled    bool
+	CookieName string
+	TTL        time.Duration
+}
+
 // Load loads configuration from environment variables with defaults
 func Load() (*Config, error) {
 	cfg := &Config{
@@ -122,8 +181,8 @@ func Load() (*Config, error) {
 			Path:           getEnv("OPENKMS_STORAGE_PATH", "./data/openkms.db"),
 			Connection:     getEnv("OPENKMS_STORAGE_CONNECTION", ""),
 			Endpoints:      getEnvSlice("OPENKMS_STORAGE_ETCD_ENDPOINTS", []string{"localhost:2379"}),
-			DialTimeout:    getEnvDuration("OPENKMS_STORAGE_ETCD_DIAL_TIMEOUT", 5*time.Second),
-			RequestTimeout: getEnvDuration("OPENKMS_STORAGE_ETCD_REQUEST_TIMEOUT", 3*time.Second),
+			DialTimeout:    getEnvDuration("OPENKMS_STORAGE_ETCD_DIAL_TIMEOUT", defaultEtcdDialTimeout),
+			RequestTimeout: getEnvDuration("OPENKMS_STORAGE_ETCD_REQUEST_TIMEOUT", defaultEtcdRequestTimeout),
 		},
 		Security: SecurityConfig{
 			MasterKeyProvider: getEnv("OPENKMS_MASTER_KEY_PROVIDER", "env"),
@@ -148,6 +207,31 @@ func Load() (*Config, error) {
 			Enabled: getEnvBool("OPENKMS_METRICS_ENABLED", true),
 			Path:    getEnv("OPENKMS_METRICS_PATH", "/metrics"),
 			Port:    getEnvInt("OPENKMS_METRICS_PORT", defaultMetricsPort),
+		},
+		HA: HAConfig{
+			Enabled: getEnvBool("OPENKMS_HA_ENABLED", false),
+			NodeID:  getEnv("OPENKMS_HA_NODE_ID", ""),
+			LeaderElection: LeaderElectionConfig{
+				Enabled:         getEnvBool("OPENKMS_HA_LEADER_ELECTION_ENABLED", false),
+				UseAdvisoryLock: getEnvBool("OPENKMS_HA_LEADER_USE_ADVISORY_LOCK", true),
+				LockID:          int64(getEnvInt("OPENKMS_HA_LEADER_LOCK_ID", defaultLeaderLockID)),
+				TTL:             getEnvInt("OPENKMS_HA_LEADER_TTL", defaultLeaderTTL),
+				RefreshInterval: getEnvDuration("OPENKMS_HA_LEADER_REFRESH_INTERVAL", defaultLeaderRefreshInterval),
+				CheckInterval:   getEnvDuration("OPENKMS_HA_LEADER_CHECK_INTERVAL", defaultLeaderCheckInterval),
+			},
+			ReadReplica: ReadReplicaConfig{
+				Enabled:         getEnvBool("OPENKMS_HA_READ_REPLICA_ENABLED", false),
+				Connection:      getEnv("OPENKMS_HA_READ_REPLICA_CONNECTION", ""),
+				MaxConns:        safeInt32(getEnvInt("OPENKMS_HA_READ_REPLICA_MAX_CONNS", defaultReadReplicaMaxConns)),
+				MinConns:        safeInt32(getEnvInt("OPENKMS_HA_READ_REPLICA_MIN_CONNS", defaultReadReplicaMinConns)),
+				ConnMaxLifetime: getEnvDuration("OPENKMS_HA_READ_REPLICA_CONN_MAX_LIFETIME", defaultReadReplicaConnMaxLifetime),
+				ConnMaxIdleTime: getEnvDuration("OPENKMS_HA_READ_REPLICA_CONN_MAX_IDLE_TIME", defaultReadReplicaConnMaxIdleTime),
+			},
+			StickySessions: StickySessionsConfig{
+				Enabled:    getEnvBool("OPENKMS_HA_STICKY_SESSIONS_ENABLED", false),
+				CookieName: getEnv("OPENKMS_HA_STICKY_SESSIONS_COOKIE_NAME", "openkms_session"),
+				TTL:        getEnvDuration("OPENKMS_HA_STICKY_SESSIONS_TTL", defaultStickySessionTTL),
+			},
 		},
 	}
 
@@ -245,4 +329,18 @@ func getEnvDuration(key string, defaultValue time.Duration) time.Duration {
 		}
 	}
 	return defaultValue
+}
+
+// safeInt32 safely converts int to int32, clamping to int32 limits if necessary
+func safeInt32(value int) int32 {
+	const maxInt32 = int32(^uint32(0) >> 1)
+	const minInt32 = -maxInt32 - 1
+
+	if value > int(maxInt32) {
+		return maxInt32
+	}
+	if value < int(minInt32) {
+		return minInt32
+	}
+	return int32(value)
 }
