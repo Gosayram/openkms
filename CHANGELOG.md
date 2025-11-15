@@ -14,7 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `Fixed` for any bug fixes.
 - `Security` in case of vulnerabilities.
 
-## [Unreleased]
+## [0.3.6] - 2025-11-15
 
 ### Added
 - Add ABAC support for authorization #16
@@ -28,13 +28,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 - Bump README
+- Bump release
 - Merge pull request #11 from Gosayram/fix/announce_description
 - Merge pull request #14 from Gosayram/feature/phase_3_3
 - Merge pull request #20 from Gosayram/feature/phase_3_4
 - Merge pull request #26 from Gosayram/feature/phase_3_5
+- Merge pull request #27 from Gosayram/fix/release_v0_3_6
 
 ### Fixed
 - Pkgs url for announce description
+- Specific CGO=1 for C required libs
 
 ## [0.3.5] - 2025-11-15
 
@@ -112,7 +115,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Changelog mechanism for autogen
 
 
-[Unreleased]: https://github.com/Gosayram/openkms/compare/v0.3.5...HEAD
+[Unreleased]: https://github.com/Gosayram/openkms/compare/v0.3.6...HEAD
+[0.3.6]: https://github.com/Gosayram/openkms/compare/v0.3.5...v0.3.6
 [0.3.5]: https://github.com/Gosayram/openkms/compare/v0.3.4...v0.3.5
 [0.3.4]: https://github.com/Gosayram/openkms/compare/v0.3.3...v0.3.4
 [0.3.3]: https://github.com/Gosayram/openkms/compare/v0.3.2...v0.3.3
