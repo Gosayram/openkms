@@ -60,6 +60,12 @@ should_skip_commit() {
         return 0  # Skip
     fi
     
+    # Skip commits that only bump release
+    # Patterns: "[UPD] - bump release", "bump release", "[UPD] bump release", etc.
+    if echo "$upper_msg" | grep -qE '^\[?[A-Z]*\]?[[:space:]]*[-:]?[[:space:]]*(BUMP|UPDATE|UPD)[[:space:]]+.*RELEASE[[:space:]]*[;:]?[[:space:]]*$'; then
+        return 0  # Skip
+    fi
+    
     return 1  # Don't skip
 }
 

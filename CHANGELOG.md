@@ -19,10 +19,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - Added cosign public key for release artifacts validation
 
+### Changed
+- Merge pull request #7 from Gosayram/fix/cosign_key
+
 ## [0.3.4] - 2025-11-15
 
 ### Changed
-- Bump release
 - Merge pull request #6 from Gosayram/fix/builds
 
 ### Fixed
@@ -31,7 +33,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.3.3] - 2025-11-15
 
 ### Changed
-- Bump release
 - Merge pull request #5 from Gosayram/fix/ci
 
 ### Fixed
@@ -40,7 +41,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.3.2] - 2025-11-15
 
 ### Changed
-- Bump release
 - Merge pull request #4 from Gosayram/fix/minor_bugs
 
 ### Fixed
@@ -50,7 +50,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.3.1] - 2025-11-15
 
 ### Changed
-- Bump release
 - Merge pull request #2 from Gosayram/fix/dependency_updates
 - Merge pull request #3 from Gosayram/fix/goreleaser
 

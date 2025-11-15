@@ -181,6 +181,8 @@ changelog:
       - "^chore: schema update$"
       - "^chore\\(deps\\): "
       - "^(build|ci): "
+      - "^.*?\\[UPD\\] - bump CHANGELOG.*$"
+      - "^.*?\\[UPD\\] - bump release.*$"
       - "merge conflict"
       - "merge conflict"
       - Merge pull request
