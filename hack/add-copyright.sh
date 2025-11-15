@@ -21,7 +21,7 @@ GO_HEADER="// Copyright 2025 Gosayram Contributors
 // limitations under the License."
 
 # Find all Go files
-find . -name "*.go" -not -path "./vendor/*" -not -path "./.git/*" -not -path "./hack/*" | while read -r file; do
+find . -name "*.go" -not -path "./vendor/*" -not -path "./.git/*" -not -path "./hack/*" -not -path "./logo/*" | while read -r file; do
     # Check if file already has correct copyright
     if grep -q "$COPYRIGHT" "$file" 2>/dev/null; then
         echo "✓ $file (already has correct copyright)"
