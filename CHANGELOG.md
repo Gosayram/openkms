@@ -19,6 +19,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - Added cosign public key for release artifacts validation
 
+### Changed
+- Added logo and minimal improve README
+- Merge pull request #7 from Gosayram/fix/cosign_key
+
+### Fixed
+- Exclude logo folder for checking  copyright scripts
+
 ## [0.3.4] - 2025-11-15
 
 ### Changed
