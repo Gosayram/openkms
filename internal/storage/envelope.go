@@ -19,24 +19,35 @@ import (
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/rand"
+	"encoding/binary"
 	"fmt"
 	"io"
+
+	"github.com/Gosayram/openkms/internal/policies/masterkey"
 )
 
 const (
 	// aes256MasterKeySize is the required master key size for AES-256 in bytes
 	aes256MasterKeySize = 32
+	// aes256DEKSize is the size of Data Encryption Key (DEK) in bytes
+	aes256DEKSize = 32
+	// aesGCMNonceSize is the nonce size for AES-GCM (12 bytes)
+	aesGCMNonceSize = 12
 )
 
 // EnvelopeBackend wraps a backend with envelope encryption
 // All data is encrypted with the master key before storage
+// For HSM providers, uses DEK (Data Encryption Key) with wrap/unwrap operations
 type EnvelopeBackend struct {
-	backend   Backend
-	masterKey []byte
-	aead      cipher.AEAD
+	backend        Backend
+	masterKey      []byte             // nil for HSM providers
+	masterProvider masterkey.Provider // nil for direct master key mode
+	aead           cipher.AEAD        // nil for HSM providers
+	useHSM         bool               // true if using HSM provider
 }
 
-// NewEnvelopeBackend creates a new envelope encryption wrapper
+// NewEnvelopeBackend creates a new envelope encryption wrapper with master key
+// This is the legacy constructor for backward compatibility
 func NewEnvelopeBackend(backend Backend, masterKey []byte) (*EnvelopeBackend, error) {
 	if len(masterKey) != aes256MasterKeySize {
 		return nil, fmt.Errorf("master key must be %d bytes (AES-256)", aes256MasterKeySize)
@@ -53,9 +64,53 @@ func NewEnvelopeBackend(backend Backend, masterKey []byte) (*EnvelopeBackend, er
 	}
 
 	return &EnvelopeBackend{
-		backend:   backend,
-		masterKey: masterKey,
-		aead:      aead,
+		backend:        backend,
+		masterKey:      masterKey,
+		masterProvider: nil,
+		aead:           aead,
+		useHSM:         false,
+	}, nil
+}
+
+// NewEnvelopeBackendWithProvider creates a new envelope encryption wrapper with master key provider
+// This supports both direct master key (env, file) and HSM providers (PKCS#11)
+func NewEnvelopeBackendWithProvider(backend Backend, provider masterkey.Provider) (*EnvelopeBackend, error) {
+	ctx := context.Background()
+
+	// Try to get master key directly (for env/file providers)
+	masterKey, err := provider.GetMasterKey(ctx)
+	if err == nil {
+		// Master key is available, use direct mode
+		if len(masterKey) != aes256MasterKeySize {
+			return nil, fmt.Errorf("master key must be %d bytes (AES-256)", aes256MasterKeySize)
+		}
+
+		block, err := aes.NewCipher(masterKey)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create cipher: %w", err)
+		}
+
+		aead, err := cipher.NewGCM(block)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create GCM: %w", err)
+		}
+
+		return &EnvelopeBackend{
+			backend:        backend,
+			masterKey:      masterKey,
+			masterProvider: nil,
+			aead:           aead,
+			useHSM:         false,
+		}, nil
+	}
+
+	// Master key is not extractable (HSM provider), use DEK mode
+	return &EnvelopeBackend{
+		backend:        backend,
+		masterKey:      nil,
+		masterProvider: provider,
+		aead:           nil,
+		useHSM:         true,
 	}, nil
 }
 
@@ -83,11 +138,19 @@ func (e *EnvelopeBackend) Get(ctx context.Context, key string) ([]byte, error) {
 		return nil, err
 	}
 
+	if e.useHSM {
+		return e.decryptWithDEK(ctx, encrypted, key)
+	}
+
 	return decryptData(e.aead, encrypted, key)
 }
 
 // Put encrypts and stores a value with the given key
 func (e *EnvelopeBackend) Put(ctx context.Context, key string, value []byte) error {
+	if e.useHSM {
+		return e.encryptWithDEK(ctx, key, value)
+	}
+
 	// Generate nonce
 	nonce := make([]byte, e.aead.NonceSize())
 	if _, err := io.ReadFull(rand.Reader, nonce); err != nil {
@@ -121,6 +184,111 @@ func (e *EnvelopeBackend) Ping(ctx context.Context) error {
 	return e.backend.Ping(ctx)
 }
 
+// encryptWithDEK encrypts data using DEK (Data Encryption Key) for HSM providers
+// Format: [4 bytes: wrapped DEK length][wrapped DEK][nonce][ciphertext]
+func (e *EnvelopeBackend) encryptWithDEK(ctx context.Context, key string, value []byte) error {
+	// Generate DEK (Data Encryption Key)
+	dek := make([]byte, aes256DEKSize)
+	if _, err := io.ReadFull(rand.Reader, dek); err != nil {
+		return fmt.Errorf("failed to generate DEK: %w", err)
+	}
+
+	// Wrap DEK with master key in HSM
+	wrappedDEK, err := e.masterProvider.WrapKey(ctx, dek)
+	if err != nil {
+		return fmt.Errorf("failed to wrap DEK: %w", err)
+	}
+
+	// Encrypt data with DEK using AES-GCM
+	block, err := aes.NewCipher(dek)
+	if err != nil {
+		return fmt.Errorf("failed to create cipher: %w", err)
+	}
+
+	aead, err := cipher.NewGCM(block)
+	if err != nil {
+		return fmt.Errorf("failed to create GCM: %w", err)
+	}
+
+	nonce := make([]byte, aesGCMNonceSize)
+	if _, err := io.ReadFull(rand.Reader, nonce); err != nil {
+		return fmt.Errorf("failed to generate nonce: %w", err)
+	}
+
+	ciphertext := aead.Seal(nonce, nonce, value, []byte(key))
+
+	// Combine: [4 bytes: wrapped DEK length][wrapped DEK][nonce + ciphertext]
+	const lengthFieldSize = 4 //nolint:mnd // 4 bytes for uint32 length field
+	wrappedDEKLen := make([]byte, lengthFieldSize)
+	if len(wrappedDEK) > int(^uint32(0)) {
+		return fmt.Errorf("wrapped DEK too large: %d bytes", len(wrappedDEK))
+	}
+	//nolint:gosec // length is validated above, conversion is safe
+	binary.BigEndian.PutUint32(wrappedDEKLen, uint32(len(wrappedDEK)))
+
+	encrypted := make([]byte, 0, lengthFieldSize+len(wrappedDEK)+len(ciphertext))
+	encrypted = append(encrypted, wrappedDEKLen...)
+	encrypted = append(encrypted, wrappedDEK...)
+	encrypted = append(encrypted, ciphertext...)
+
+	return e.backend.Put(ctx, key, encrypted)
+}
+
+// decryptWithDEK decrypts data using DEK (Data Encryption Key) for HSM providers
+// Format: [4 bytes: wrapped DEK length][wrapped DEK][nonce][ciphertext]
+func (e *EnvelopeBackend) decryptWithDEK(ctx context.Context, encrypted []byte, key string) ([]byte, error) {
+	// Extract wrapped DEK length
+	const lengthFieldSize = 4 //nolint:mnd // 4 bytes for uint32 length field
+	if len(encrypted) < lengthFieldSize {
+		return nil, fmt.Errorf("encrypted data too short")
+	}
+
+	wrappedDEKLen := binary.BigEndian.Uint32(encrypted[:lengthFieldSize])
+	if wrappedDEKLen == 0 || len(encrypted) < int(lengthFieldSize+wrappedDEKLen+aesGCMNonceSize) {
+		return nil, fmt.Errorf("invalid encrypted data format")
+	}
+
+	// Extract wrapped DEK
+	wrappedDEK := encrypted[lengthFieldSize : lengthFieldSize+wrappedDEKLen]
+
+	// Unwrap DEK with master key in HSM
+	dek, err := e.masterProvider.UnwrapKey(ctx, wrappedDEK)
+	if err != nil {
+		return nil, fmt.Errorf("failed to unwrap DEK: %w", err)
+	}
+
+	if len(dek) != aes256DEKSize {
+		return nil, fmt.Errorf("invalid DEK size: expected %d, got %d", aes256DEKSize, len(dek))
+	}
+
+	// Extract encrypted data (nonce + ciphertext)
+	encryptedData := encrypted[4+wrappedDEKLen:]
+
+	// Decrypt data with DEK using AES-GCM
+	block, err := aes.NewCipher(dek)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create cipher: %w", err)
+	}
+
+	aead, err := cipher.NewGCM(block)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create GCM: %w", err)
+	}
+
+	nonceSize := aead.NonceSize()
+	if len(encryptedData) < nonceSize {
+		return nil, fmt.Errorf("encrypted data too short")
+	}
+
+	nonce, ciphertext := encryptedData[:nonceSize], encryptedData[nonceSize:]
+	plaintext, err := aead.Open(nil, nonce, ciphertext, []byte(key))
+	if err != nil {
+		return nil, fmt.Errorf("failed to decrypt: %w", err)
+	}
+
+	return plaintext, nil
+}
+
 // Begin starts a new transaction (if supported by underlying backend)
 func (e *EnvelopeBackend) Begin(ctx context.Context) (Transaction, error) {
 	txBackend, ok := e.backend.(TransactionalBackend)
@@ -131,6 +299,12 @@ func (e *EnvelopeBackend) Begin(ctx context.Context) (Transaction, error) {
 	tx, err := txBackend.Begin(ctx)
 	if err != nil {
 		return nil, err
+	}
+
+	// For HSM mode, transactions are not fully supported yet
+	// We need to handle DEK generation per transaction
+	if e.useHSM {
+		return nil, fmt.Errorf("transactions not yet supported for HSM providers")
 	}
 
 	return &EnvelopeTransaction{

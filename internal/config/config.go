@@ -94,10 +94,21 @@ type StorageConfig struct {
 
 // SecurityConfig contains security-related configuration
 type SecurityConfig struct {
-	MasterKeyProvider string // "env", "file", "hsm"
+	MasterKeyProvider string // "env", "file", "pkcs11", "tpm"
 	MasterKeyPath     string
 	MasterKeyEnvVar   string
-	Auth              AuthConfig
+	// PKCS#11 configuration
+	HSMLibraryPath string // Path to PKCS#11 library
+	HSMSlotID      uint   // Slot ID (0 = auto-detect)
+	HSMTokenLabel  string // Token label (optional)
+	HSMKeyLabel    string // Master key label in HSM
+	HSMKeyID       string // Master key ID in HSM (optional)
+	// TPM configuration
+	TPMPath         string // Path to TPM device (e.g., /dev/tpm0 or /dev/tpmrm0)
+	TPMPCRSelection []int  // PCR selection for sealed storage (empty = no PCR binding)
+	TPMKeyLabel     string // Master key label in TPM
+	TPMUseSealed    bool   // Use sealed storage (true) or persistent key (false)
+	Auth            AuthConfig
 }
 
 // AuthConfig contains authentication configuration
@@ -188,6 +199,15 @@ func Load() (*Config, error) {
 			MasterKeyProvider: getEnv("OPENKMS_MASTER_KEY_PROVIDER", "env"),
 			MasterKeyPath:     getEnv("OPENKMS_MASTER_KEY_PATH", ""),
 			MasterKeyEnvVar:   getEnv("OPENKMS_MASTER_KEY_ENV_VAR", "OPENKMS_MASTER_KEY"),
+			HSMLibraryPath:    getEnv("OPENKMS_HSM_LIBRARY_PATH", ""),
+			HSMSlotID:         safeUint(getEnvInt("OPENKMS_HSM_SLOT_ID", 0)),
+			HSMTokenLabel:     getEnv("OPENKMS_HSM_TOKEN_LABEL", ""),
+			HSMKeyLabel:       getEnv("OPENKMS_HSM_KEY_LABEL", "openkms-master-key"),
+			HSMKeyID:          getEnv("OPENKMS_HSM_KEY_ID", ""),
+			TPMPath:           getEnv("OPENKMS_TPM_PATH", ""),
+			TPMPCRSelection:   parsePCRSelection(getEnv("OPENKMS_TPM_PCR_SELECTION", "")),
+			TPMKeyLabel:       getEnv("OPENKMS_TPM_KEY_LABEL", "openkms-master-key"),
+			TPMUseSealed:      getEnvBool("OPENKMS_TPM_USE_SEALED", false),
 			Auth: AuthConfig{
 				Providers:        getEnvSlice("OPENKMS_AUTH_PROVIDERS", []string{"static", "mtls"}),
 				OIDCIssuer:       getEnv("OPENKMS_OIDC_ISSUER", ""),
@@ -279,6 +299,22 @@ func (c *Config) Validate() error {
 
 // Helper functions for environment variable parsing
 
+// parsePCRSelection parses comma-separated PCR selection string into slice of integers
+func parsePCRSelection(pcrStr string) []int {
+	if pcrStr == "" {
+		return nil
+	}
+	var pcrSelection []int
+	pcrList := strings.Split(pcrStr, ",")
+	for _, pcrStr := range pcrList {
+		var pcr int
+		if _, err := fmt.Sscanf(strings.TrimSpace(pcrStr), "%d", &pcr); err == nil {
+			pcrSelection = append(pcrSelection, pcr)
+		}
+	}
+	return pcrSelection
+}
+
 func getEnv(key, defaultValue string) string {
 	if value := os.Getenv(key); value != "" {
 		return value
@@ -343,4 +379,12 @@ func safeInt32(value int) int32 {
 		return minInt32
 	}
 	return int32(value)
+}
+
+// safeUint safely converts int to uint, ensuring non-negative value
+func safeUint(value int) uint {
+	if value < 0 {
+		return 0
+	}
+	return uint(value)
 }

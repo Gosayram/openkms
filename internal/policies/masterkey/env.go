@@ -68,6 +68,30 @@ func (e *EnvProvider) RotateMasterKey(ctx context.Context) ([]byte, error) {
 	return nil, fmt.Errorf("master key rotation not supported for env provider")
 }
 
+// WrapKey encrypts a key using the master key
+//
+//nolint:revive // ctx parameter is required by Provider interface
+func (e *EnvProvider) WrapKey(ctx context.Context, key []byte) ([]byte, error) {
+	masterKey, err := e.GetMasterKey(ctx)
+	if err != nil {
+		return nil, err
+	}
+	// Use AES-GCM for wrapping
+	return wrapKeyWithAESGCM(masterKey, key)
+}
+
+// UnwrapKey decrypts a key using the master key
+//
+//nolint:revive // ctx parameter is required by Provider interface
+func (e *EnvProvider) UnwrapKey(ctx context.Context, wrappedKey []byte) ([]byte, error) {
+	masterKey, err := e.GetMasterKey(ctx)
+	if err != nil {
+		return nil, err
+	}
+	// Use AES-GCM for unwrapping
+	return unwrapKeyWithAESGCM(masterKey, wrappedKey)
+}
+
 // Close releases resources
 func (e *EnvProvider) Close() error {
 	return nil
