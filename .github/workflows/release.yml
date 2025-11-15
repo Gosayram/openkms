@@ -52,6 +52,11 @@ jobs:
           DOCKER_REPO_PATH=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
           echo "DOCKER_REPO_PATH=$DOCKER_REPO_PATH" >> $GITHUB_ENV
           echo "Docker repository path: $DOCKER_REPO_PATH"
+          
+          # Extract repository name (without owner) for Docker package URLs
+          REPO_NAME=$(echo "${{ github.repository }}" | cut -d'/' -f2)
+          echo "REPO_NAME=$REPO_NAME" >> $GITHUB_ENV
+          echo "Repository name: $REPO_NAME"
 
       # Import GPG key for signing binaries and checksums
       - name: Import GPG key
@@ -79,6 +84,8 @@ jobs:
           GITHUB_REPO_URL: ${{ env.GITHUB_REPO_URL }}
           # Docker repository path for templates
           DOCKER_REPO_PATH: ${{ env.DOCKER_REPO_PATH }}
+          # Repository name for Docker package URLs
+          REPO_NAME: ${{ env.REPO_NAME }}
           # Telegram announcement
           TELEGRAM_TOKEN: ${{ secrets.TG_RELEASER_TOKEN }}
           OPENKMS_CHAT_ID: ${{ secrets.OPENKMS_CHAT_ID }}
