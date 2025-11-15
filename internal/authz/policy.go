@@ -27,11 +27,13 @@ type Policy struct {
 }
 
 // Engine manages authorization policies
-// It can use either simple policy engine or Casbin engine
+// It can use either simple policy engine, Casbin engine, or ABAC engine
 type Engine struct {
 	policies  map[string]*Policy
 	casbin    *CasbinEngine
 	useCasbin bool
+	abac      *ABACEngine
+	useABAC   bool
 }
 
 // IsCasbinEngine returns true if the engine is using Casbin
@@ -52,6 +54,7 @@ func NewEngine() *Engine {
 	return &Engine{
 		policies:  make(map[string]*Policy),
 		useCasbin: false,
+		useABAC:   false,
 	}
 }
 
@@ -61,7 +64,46 @@ func NewEngineWithCasbin(casbinEngine *CasbinEngine) *Engine {
 		policies:  make(map[string]*Policy),
 		casbin:    casbinEngine,
 		useCasbin: true,
+		useABAC:   false,
 	}
+}
+
+// NewEngineWithABAC creates a new authorization engine with ABAC
+func NewEngineWithABAC(abacEngine *ABACEngine) *Engine {
+	return &Engine{
+		policies:  make(map[string]*Policy),
+		useABAC:   true,
+		abac:      abacEngine,
+		useCasbin: false,
+	}
+}
+
+// NewEngineWithCasbinAndABAC creates a new authorization engine with both Casbin and ABAC
+// ABAC is evaluated first, then Casbin if ABAC doesn't match
+func NewEngineWithCasbinAndABAC(casbinEngine *CasbinEngine, abacEngine *ABACEngine) *Engine {
+	return &Engine{
+		policies:  make(map[string]*Policy),
+		casbin:    casbinEngine,
+		useCasbin: true,
+		abac:      abacEngine,
+		useABAC:   true,
+	}
+}
+
+// SetABACEngine sets the ABAC engine
+func (e *Engine) SetABACEngine(abacEngine *ABACEngine) {
+	e.abac = abacEngine
+	e.useABAC = abacEngine != nil && abacEngine.IsEnabled()
+}
+
+// GetABACEngine returns the ABAC engine if available
+func (e *Engine) GetABACEngine() *ABACEngine {
+	return e.abac
+}
+
+// IsABACEngine returns true if the engine is using ABAC
+func (e *Engine) IsABACEngine() bool {
+	return e.useABAC && e.abac != nil
 }
 
 // AddPolicy adds a policy
@@ -81,6 +123,7 @@ func (e *Engine) GetPolicy(identity string) (*Policy, bool) {
 }
 
 // CheckPermission checks if identity has permission for a key
+// This is the legacy method that doesn't use ABAC attributes
 func (e *Engine) CheckPermission(identity string, permission Permission, keyID string) (bool, error) {
 	// Use Casbin if enabled
 	if e.useCasbin && e.casbin != nil {
@@ -106,6 +149,56 @@ func (e *Engine) CheckPermission(identity string, permission Permission, keyID s
 
 	for _, pattern := range policy.KeyPatterns {
 		if matchPattern(keyID, pattern) {
+			return true, nil
+		}
+	}
+
+	return false, nil
+}
+
+// CheckPermissionWithAttributes checks if identity has permission for a key using ABAC attributes
+// If ABAC is enabled, it evaluates ABAC policies first, then falls back to RBAC
+func (e *Engine) CheckPermissionWithAttributes(attrs Attributes) (bool, error) {
+	// If ABAC is enabled, check ABAC policies first
+	if e.useABAC && e.abac != nil {
+		allowed, err := e.abac.CheckAccess(attrs)
+		if err == nil {
+			// ABAC decision made, return it
+			// If ABAC denies, we can still check RBAC (depending on policy)
+			// For now, if ABAC allows, we allow; if ABAC denies, we check RBAC
+			if allowed {
+				return true, nil
+			}
+			// ABAC denied, continue to RBAC check
+		}
+		// If ABAC error, fall through to RBAC
+	}
+
+	// Fall back to RBAC (Casbin or simple policy engine)
+	if e.useCasbin && e.casbin != nil {
+		return e.casbin.CheckPermission(attrs.Subject.ID, Permission(attrs.Action), attrs.Object.ID)
+	}
+
+	// Fallback to simple policy engine
+	policy, ok := e.policies[attrs.Subject.ID]
+	if !ok {
+		return false, fmt.Errorf("no policy found for identity: %s", attrs.Subject.ID)
+	}
+
+	// Check if identity has the permission
+	permission := Permission(attrs.Action)
+	if !policy.Permissions.Has(permission) {
+		return false, nil
+	}
+
+	// Check if key matches any pattern
+	if len(policy.KeyPatterns) == 0 {
+		// No patterns means access to all keys
+		return true, nil
+	}
+
+	for _, pattern := range policy.KeyPatterns {
+		if matchPattern(attrs.Object.ID, pattern) {
 			return true, nil
 		}
 	}
