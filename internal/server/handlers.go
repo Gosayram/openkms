@@ -354,8 +354,19 @@ func (h *Handlers) Verify(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// For Ed25519, extract public key from private key
+	// Ed25519 private key is 64 bytes, public key is the last 32 bytes
+	var publicKeyMaterial []byte
+	if metadata.Algorithm == keystore.AlgorithmEd25519 && len(keyMaterial) == 64 {
+		// Extract public key from private key (last 32 bytes)
+		publicKeyMaterial = keyMaterial[32:]
+	} else {
+		// For other algorithms or if key size doesn't match, use as-is
+		publicKeyMaterial = keyMaterial
+	}
+
 	// Verify
-	valid, err := h.cryptoEngine.Verify(ctx, keyMaterial, string(metadata.Algorithm), req.Data, req.Signature)
+	valid, err := h.cryptoEngine.Verify(ctx, publicKeyMaterial, string(metadata.Algorithm), req.Data, req.Signature)
 	if err != nil {
 		h.logger.Error("Failed to verify", zap.Error(err))
 		h.respondError(w, http.StatusBadRequest, "failed to verify signature", err)

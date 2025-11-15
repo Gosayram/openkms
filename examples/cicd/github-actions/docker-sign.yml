@@ -1,0 +1,137 @@
+# Copyright 2025 Gosayram Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# GitHub Actions workflow for signing Docker images using OpenKMS
+name: Build and Sign Docker Image
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  build-and-sign:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=ref,event=branch
+            type=ref,event=pr
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=sha
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+
+      - name: Download OpenKMS CLI
+        uses: actions/download-artifact@v4
+        continue-on-error: true
+      - name: Download OpenKMS CLI (fallback)
+        if: failure()
+        run: |
+          OPENKMS_VERSION="latest"
+          wget -q "https://github.com/Gosayram/openkms/releases/${OPENKMS_VERSION}/download/openkms-cli-linux-amd64" -O openkms-cli
+          chmod +x openkms-cli
+          sudo mv openkms-cli /usr/local/bin/
+
+      - name: Sign Docker image with OpenKMS
+        env:
+          OPENKMS_URL: ${{ secrets.OPENKMS_URL }}
+          OPENKMS_TOKEN: ${{ secrets.OPENKMS_TOKEN }}
+          OPENKMS_KEY_ID: ${{ secrets.OPENKMS_KEY_ID }}
+        run: |
+          # Get image digest
+          IMAGE_DIGEST=$(docker inspect ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.ref_name }} --format='{{index .RepoDigests 0}}' | cut -d'@' -f2)
+          
+          # Create temporary file with digest for signing
+          echo "$IMAGE_DIGEST" > /tmp/image-digest.txt
+          
+          # Sign digest using OpenKMS
+          openkms-cli sign \
+            --key-id "$OPENKMS_KEY_ID" \
+            --file /tmp/image-digest.txt \
+            --server-url "$OPENKMS_URL" \
+            --token "$OPENKMS_TOKEN" \
+            --output /tmp/image-digest.sig
+          
+          # Save signature as artifact
+          echo "Signature created: /tmp/image-digest.sig"
+          cat /tmp/image-digest.sig
+          
+          # Upload signature as GitHub artifact
+          mkdir -p signatures
+          cp /tmp/image-digest.sig "signatures/${IMAGE_DIGEST}.sig"
+
+      - name: Upload signature artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: docker-image-signatures
+          path: signatures/
+          retention-days: 90
+
+      - name: Verify signature
+        env:
+          OPENKMS_URL: ${{ secrets.OPENKMS_URL }}
+          OPENKMS_TOKEN: ${{ secrets.OPENKMS_TOKEN }}
+          OPENKMS_KEY_ID: ${{ secrets.OPENKMS_KEY_ID }}
+        run: |
+          # Get public key for verification
+          openkms-cli get-key "$OPENKMS_KEY_ID" \
+            --server-url "$OPENKMS_URL" \
+            --token "$OPENKMS_TOKEN" \
+            --public-key > /tmp/cosign.pub
+          
+          # Verify signature (example using cosign if installed)
+          if command -v cosign &> /dev/null; then
+            IMAGE_DIGEST=$(cat /tmp/image-digest.txt)
+            cosign verify-blob \
+              --key /tmp/cosign.pub \
+              --signature "signatures/${IMAGE_DIGEST}.sig" \
+              /tmp/image-digest.txt
+          else
+            echo "Cosign CLI not installed, skipping verification"
+          fi
+

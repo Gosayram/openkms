@@ -1,0 +1,140 @@
+# Copyright 2025 Gosayram Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# GitHub Actions workflow for signing binary files using OpenKMS
+name: Build and Sign Binaries
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+jobs:
+  build-and-sign:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        goos: [linux, windows, darwin]
+        goarch: [amd64, arm64]
+        exclude:
+          - os: windows-latest
+            goarch: arm64
+          - os: macos-latest
+            goarch: arm64
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.25'
+
+      - name: Build binary
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+        run: |
+          BINARY_NAME="myapp-${GOOS}-${GOARCH}"
+          if [ "$GOOS" = "windows" ]; then
+            BINARY_NAME="${BINARY_NAME}.exe"
+          fi
+          go build -o "$BINARY_NAME" ./cmd/myapp
+          echo "BINARY_NAME=$BINARY_NAME" >> $GITHUB_ENV
+
+      - name: Download OpenKMS CLI
+        run: |
+          OPENKMS_VERSION="latest"
+          if [ "${{ runner.os }}" = "Linux" ]; then
+            wget -q "https://github.com/Gosayram/openkms/releases/${OPENKMS_VERSION}/download/openkms-cli-linux-amd64" -O openkms-cli
+          elif [ "${{ runner.os }}" = "Windows" ]; then
+            curl -L "https://github.com/Gosayram/openkms/releases/${OPENKMS_VERSION}/download/openkms-cli-windows-amd64.exe" -o openkms-cli.exe
+          else
+            curl -L "https://github.com/Gosayram/openkms/releases/${OPENKMS_VERSION}/download/openkms-cli-darwin-amd64" -o openkms-cli
+          fi
+          chmod +x openkms-cli*
+
+      - name: Sign binary with OpenKMS
+        env:
+          OPENKMS_URL: ${{ secrets.OPENKMS_URL }}
+          OPENKMS_TOKEN: ${{ secrets.OPENKMS_TOKEN }}
+          OPENKMS_KEY_ID: ${{ secrets.OPENKMS_KEY_ID }}
+        run: |
+          if [ "${{ runner.os }}" = "Windows" ]; then
+            ./openkms-cli.exe sign \
+              --key-id "$OPENKMS_KEY_ID" \
+              --file "$BINARY_NAME" \
+              --server-url "$OPENKMS_URL" \
+              --token "$OPENKMS_TOKEN" \
+              --output "${BINARY_NAME}.sig"
+          else
+            ./openkms-cli sign \
+              --key-id "$OPENKMS_KEY_ID" \
+              --file "$BINARY_NAME" \
+              --server-url "$OPENKMS_URL" \
+              --token "$OPENKMS_TOKEN" \
+              --output "${BINARY_NAME}.sig"
+          fi
+
+      - name: Create checksums
+        run: |
+          if [ "${{ runner.os }}" = "Windows" ]; then
+            certutil -hashfile "$BINARY_NAME" SHA256 > "${BINARY_NAME}.sha256"
+          else
+            shasum -a 256 "$BINARY_NAME" > "${BINARY_NAME}.sha256"
+          fi
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: binaries-${{ matrix.goos }}-${{ matrix.goarch }}
+          path: |
+            ${{ env.BINARY_NAME }}
+            ${{ env.BINARY_NAME }}.sig
+            ${{ env.BINARY_NAME }}.sha256
+          retention-days: 90
+
+      - name: Verify signature
+        env:
+          OPENKMS_URL: ${{ secrets.OPENKMS_URL }}
+          OPENKMS_TOKEN: ${{ secrets.OPENKMS_TOKEN }}
+          OPENKMS_KEY_ID: ${{ secrets.OPENKMS_KEY_ID }}
+        run: |
+          # Get public key
+          if [ "${{ runner.os }}" = "Windows" ]; then
+            ./openkms-cli.exe get-key "$OPENKMS_KEY_ID" \
+              --server-url "$OPENKMS_URL" \
+              --token "$OPENKMS_TOKEN" \
+              --public-key > cosign.pub
+          else
+            ./openkms-cli get-key "$OPENKMS_KEY_ID" \
+              --server-url "$OPENKMS_URL" \
+              --token "$OPENKMS_TOKEN" \
+              --public-key > cosign.pub
+          fi
+          
+          # Verify signature (if cosign is installed)
+          if command -v cosign &> /dev/null; then
+            cosign verify-blob \
+              --key cosign.pub \
+              --signature "${BINARY_NAME}.sig" \
+              "$BINARY_NAME"
+            echo "✓ Signature verified successfully"
+          else
+            echo "Cosign CLI not installed, skipping verification"
+          fi
+

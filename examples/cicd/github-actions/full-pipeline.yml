@@ -1,0 +1,289 @@
+# Copyright 2025 Gosayram Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# Full CI/CD pipeline example with artifact signing and verification
+name: Full CI/CD Pipeline with Signing
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+  release:
+    types: [created]
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.25'
+
+      - name: Run tests
+        run: |
+          go test -v -race -coverprofile=coverage.out ./...
+
+      - name: Upload coverage
+        uses: codecov/codecov-action@v4
+        with:
+          file: ./coverage.out
+
+  build:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.25'
+
+      - name: Build binaries
+        run: |
+          mkdir -p dist
+          GOOS=linux GOARCH=amd64 go build -o dist/myapp-linux-amd64 ./cmd/myapp
+          GOOS=linux GOARCH=arm64 go build -o dist/myapp-linux-arm64 ./cmd/myapp
+          GOOS=darwin GOARCH=amd64 go build -o dist/myapp-darwin-amd64 ./cmd/myapp
+          GOOS=darwin GOARCH=arm64 go build -o dist/myapp-darwin-arm64 ./cmd/myapp
+          GOOS=windows GOARCH=amd64 go build -o dist/myapp-windows-amd64.exe ./cmd/myapp
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: binaries
+          path: dist/
+          retention-days: 1
+
+  sign:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: binaries
+          path: dist/
+
+      - name: Download OpenKMS CLI
+        run: |
+          OPENKMS_VERSION="latest"
+          wget -q "https://github.com/Gosayram/openkms/releases/${OPENKMS_VERSION}/download/openkms-cli-linux-amd64" -O openkms-cli
+          chmod +x openkms-cli
+          sudo mv openkms-cli /usr/local/bin/
+
+      - name: Sign all binaries
+        env:
+          OPENKMS_URL: ${{ secrets.OPENKMS_URL }}
+          OPENKMS_TOKEN: ${{ secrets.OPENKMS_TOKEN }}
+          OPENKMS_KEY_ID: ${{ secrets.OPENKMS_KEY_ID }}
+        run: |
+          for binary in dist/*; do
+            if [ -f "$binary" ]; then
+              echo "Signing $binary..."
+              openkms-cli sign \
+                --key-id "$OPENKMS_KEY_ID" \
+                --file "$binary" \
+                --server-url "$OPENKMS_URL" \
+                --token "$OPENKMS_TOKEN" \
+                --output "${binary}.sig"
+              echo "✓ Signed: ${binary}.sig"
+            fi
+          done
+
+      - name: Create checksums
+        run: |
+          cd dist
+          for binary in *; do
+            if [ -f "$binary" ] && [[ ! "$binary" == *.sig ]] && [[ ! "$binary" == *.sha256 ]]; then
+              shasum -a 256 "$binary" > "${binary}.sha256"
+            fi
+          done
+
+      - name: Upload signed artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: signed-binaries
+          path: dist/
+          retention-days: 90
+
+  verify:
+    needs: sign
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download signed artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: signed-binaries
+          path: dist/
+
+      - name: Download OpenKMS CLI
+        run: |
+          OPENKMS_VERSION="latest"
+          wget -q "https://github.com/Gosayram/openkms/releases/${OPENKMS_VERSION}/download/openkms-cli-linux-amd64" -O openkms-cli
+          chmod +x openkms-cli
+          sudo mv openkms-cli /usr/local/bin/
+
+      - name: Get public key
+        env:
+          OPENKMS_URL: ${{ secrets.OPENKMS_URL }}
+          OPENKMS_TOKEN: ${{ secrets.OPENKMS_TOKEN }}
+          OPENKMS_KEY_ID: ${{ secrets.OPENKMS_KEY_ID }}
+        run: |
+          openkms-cli get-key "$OPENKMS_KEY_ID" \
+            --server-url "$OPENKMS_URL" \
+            --token "$OPENKMS_TOKEN" \
+            --public-key > cosign.pub
+          echo "Public key saved to cosign.pub"
+
+      - name: Verify signatures
+        env:
+          OPENKMS_URL: ${{ secrets.OPENKMS_URL }}
+          OPENKMS_TOKEN: ${{ secrets.OPENKMS_TOKEN }}
+          OPENKMS_KEY_ID: ${{ secrets.OPENKMS_KEY_ID }}
+        run: |
+          # Install cosign for verification
+          if ! command -v cosign &> /dev/null; then
+            wget -q "https://github.com/sigstore/cosign/releases/latest/download/cosign-linux-amd64" -O cosign
+            chmod +x cosign
+            sudo mv cosign /usr/local/bin/
+          fi
+          
+          # Verify all signatures
+          FAILED=0
+          for binary in dist/*; do
+            if [ -f "$binary" ] && [[ ! "$binary" == *.sig ]] && [[ ! "$binary" == *.sha256 ]]; then
+              SIG_FILE="${binary}.sig"
+              if [ -f "$SIG_FILE" ]; then
+                echo "Verifying $binary..."
+                if cosign verify-blob \
+                  --key cosign.pub \
+                  --signature "$SIG_FILE" \
+                  "$binary"; then
+                  echo "✓ Verified: $binary"
+                else
+                  echo "✗ Verification failed: $binary"
+                  FAILED=1
+                fi
+              else
+                echo "✗ Signature file not found: $SIG_FILE"
+                FAILED=1
+              fi
+            fi
+          done
+          
+          if [ $FAILED -eq 1 ]; then
+            exit 1
+          fi
+
+  docker-build-and-sign:
+    needs: [test, verify]
+    runs-on: ubuntu-latest
+    if: github.event_name == 'release' || startsWith(github.ref, 'refs/tags/v')
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=sha,prefix={{branch}}-
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+
+      - name: Sign Docker image
+        env:
+          OPENKMS_URL: ${{ secrets.OPENKMS_URL }}
+          OPENKMS_TOKEN: ${{ secrets.OPENKMS_TOKEN }}
+          OPENKMS_KEY_ID: ${{ secrets.OPENKMS_KEY_ID }}
+        run: |
+          # Install OpenKMS CLI
+          OPENKMS_VERSION="latest"
+          wget -q "https://github.com/Gosayram/openkms/releases/${OPENKMS_VERSION}/download/openkms-cli-linux-amd64" -O openkms-cli
+          chmod +x openkms-cli
+          sudo mv openkms-cli /usr/local/bin/
+          
+          # Get image digest
+          IMAGE_TAG=$(echo ${{ steps.meta.outputs.tags }} | cut -d',' -f1)
+          IMAGE_DIGEST=$(docker inspect "$IMAGE_TAG" --format='{{index .RepoDigests 0}}' | cut -d'@' -f2)
+          
+          # Sign digest
+          echo "$IMAGE_DIGEST" > /tmp/image-digest.txt
+          openkms-cli sign \
+            --key-id "$OPENKMS_KEY_ID" \
+            --file /tmp/image-digest.txt \
+            --server-url "$OPENKMS_URL" \
+            --token "$OPENKMS_TOKEN" \
+            --output /tmp/image-digest.sig
+          
+          echo "Image signed: $IMAGE_DIGEST"
+          cat /tmp/image-digest.sig
+
+  release:
+    needs: [sign, verify, docker-build-and-sign]
+    runs-on: ubuntu-latest
+    if: github.event_name == 'release'
+    steps:
+      - name: Download signed artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: signed-binaries
+          path: dist/
+
+      - name: Create release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: dist/*
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+

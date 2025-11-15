@@ -1,0 +1,213 @@
+# Copyright 2025 Gosayram Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# GitLab CI pipeline for signing binary files using OpenKMS
+stages:
+  - build
+  - sign
+  - verify
+  - release
+
+variables:
+  GO_VERSION: "1.25"
+
+before_script:
+  - |
+    if [ -z "$OPENKMS_URL" ] || [ -z "$OPENKMS_TOKEN" ] || [ -z "$OPENKMS_KEY_ID" ]; then
+      echo "Error: OPENKMS_URL, OPENKMS_TOKEN, and OPENKMS_KEY_ID must be set"
+      exit 1
+    fi
+  - |
+    # Download OpenKMS CLI
+    OPENKMS_VERSION="latest"
+    wget -q "https://github.com/Gosayram/openkms/releases/${OPENKMS_VERSION}/download/openkms-cli-linux-amd64" -O openkms-cli
+    chmod +x openkms-cli
+    sudo mv openkms-cli /usr/local/bin/
+
+build:linux:amd64:
+  stage: build
+  image: golang:${GO_VERSION}-alpine
+  script:
+    - mkdir -p dist
+    - GOOS=linux GOARCH=amd64 go build -o dist/myapp-linux-amd64 ./cmd/myapp
+  artifacts:
+    paths:
+      - dist/
+    expire_in: 1 hour
+
+build:linux:arm64:
+  stage: build
+  image: golang:${GO_VERSION}-alpine
+  script:
+    - mkdir -p dist
+    - GOOS=linux GOARCH=arm64 go build -o dist/myapp-linux-arm64 ./cmd/myapp
+  artifacts:
+    paths:
+      - dist/
+    expire_in: 1 hour
+
+build:darwin:amd64:
+  stage: build
+  image: golang:${GO_VERSION}-alpine
+  script:
+    - mkdir -p dist
+    - GOOS=darwin GOARCH=amd64 go build -o dist/myapp-darwin-amd64 ./cmd/myapp
+  artifacts:
+    paths:
+      - dist/
+    expire_in: 1 hour
+
+build:darwin:arm64:
+  stage: build
+  image: golang:${GO_VERSION}-alpine
+  script:
+    - mkdir -p dist
+    - GOOS=darwin GOARCH=arm64 go build -o dist/myapp-darwin-arm64 ./cmd/myapp
+  artifacts:
+    paths:
+      - dist/
+    expire_in: 1 hour
+
+build:windows:amd64:
+  stage: build
+  image: golang:${GO_VERSION}-alpine
+  script:
+    - mkdir -p dist
+    - GOOS=windows GOARCH=amd64 go build -o dist/myapp-windows-amd64.exe ./cmd/myapp
+  artifacts:
+    paths:
+      - dist/
+    expire_in: 1 hour
+
+sign:
+  stage: sign
+  image: alpine:latest
+  dependencies:
+    - build:linux:amd64
+    - build:linux:arm64
+    - build:darwin:amd64
+    - build:darwin:arm64
+    - build:windows:amd64
+  script:
+    - apk add --no-cache wget
+    - |
+      # Download OpenKMS CLI
+      OPENKMS_VERSION="latest"
+      wget -q "https://github.com/Gosayram/openkms/releases/${OPENKMS_VERSION}/download/openkms-cli-linux-amd64" -O openkms-cli
+      chmod +x openkms-cli
+    - |
+      # Sign all binary files
+      for binary in dist/*; do
+        if [ -f "$binary" ]; then
+          echo "Signing $binary..."
+          ./openkms-cli sign \
+            --key-id "$OPENKMS_KEY_ID" \
+            --file "$binary" \
+            --server-url "$OPENKMS_URL" \
+            --token "$OPENKMS_TOKEN" \
+            --output "${binary}.sig"
+          echo "✓ Signed: ${binary}.sig"
+        fi
+      done
+    - |
+      # Create checksums
+      cd dist
+      for binary in *; do
+        if [ -f "$binary" ] && [[ ! "$binary" == *.sig ]] && [[ ! "$binary" == *.sha256 ]]; then
+          shasum -a 256 "$binary" > "${binary}.sha256"
+        fi
+      done
+  artifacts:
+    paths:
+      - dist/
+    expire_in: 90 days
+  only:
+    - tags
+    - main
+
+verify:
+  stage: verify
+  image: alpine:latest
+  dependencies:
+    - sign
+  script:
+    - apk add --no-cache wget
+    - |
+      # Download OpenKMS CLI
+      OPENKMS_VERSION="latest"
+      wget -q "https://github.com/Gosayram/openkms/releases/${OPENKMS_VERSION}/download/openkms-cli-linux-amd64" -O openkms-cli
+      chmod +x openkms-cli
+    - |
+      # Get public key
+      ./openkms-cli get-key "$OPENKMS_KEY_ID" \
+        --server-url "$OPENKMS_URL" \
+        --token "$OPENKMS_TOKEN" \
+        --public-key > cosign.pub
+    - |
+      # Install cosign for verification
+      if ! command -v cosign &> /dev/null; then
+        wget -q "https://github.com/sigstore/cosign/releases/latest/download/cosign-linux-amd64" -O cosign
+        chmod +x cosign
+      fi
+    - |
+      # Verify all signatures
+      FAILED=0
+      for binary in dist/*; do
+        if [ -f "$binary" ] && [[ ! "$binary" == *.sig ]] && [[ ! "$binary" == *.sha256 ]]; then
+          SIG_FILE="${binary}.sig"
+          if [ -f "$SIG_FILE" ]; then
+            echo "Verifying $binary..."
+            if ./cosign verify-blob \
+              --key cosign.pub \
+              --signature "$SIG_FILE" \
+              "$binary"; then
+              echo "✓ Verified: $binary"
+            else
+              echo "✗ Verification failed: $binary"
+              FAILED=1
+            fi
+          else
+            echo "✗ Signature file not found: $SIG_FILE"
+            FAILED=1
+          fi
+        fi
+      done
+      
+      if [ $FAILED -eq 1 ]; then
+        exit 1
+      fi
+  only:
+    - tags
+    - main
+
+release:
+  stage: release
+  image: alpine:latest
+  dependencies:
+    - verify
+  script:
+    - apk add --no-cache curl
+    - |
+      # Create release in GitLab
+      curl --request POST \
+        --header "PRIVATE-TOKEN: $CI_JOB_TOKEN" \
+        --form "name=Release $CI_COMMIT_TAG" \
+        --form "tag_name=$CI_COMMIT_TAG" \
+        --form "description=Release $CI_COMMIT_TAG with signed binaries" \
+        "$CI_API_V4_URL/projects/$CI_PROJECT_ID/releases"
+    - echo "Release created for tag $CI_COMMIT_TAG"
+  only:
+    - tags
+  when: manual
+
