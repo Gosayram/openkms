@@ -21,12 +21,15 @@ import (
 	"context"
 	"crypto"
 	"crypto/ed25519"
+	"crypto/x509"
 	"encoding/base64"
 	"encoding/json"
+	"encoding/pem"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/google/go-containerregistry/pkg/name"
 	v1 "github.com/google/go-containerregistry/pkg/v1"
@@ -480,6 +483,244 @@ func (v *Verifier) VerifyContainer(ctx context.Context, imageRef string) error {
 			return fmt.Errorf("signature verification failed: %w", lastErr)
 		}
 		return fmt.Errorf("no valid signatures found")
+	}
+
+	return nil
+}
+
+// SignatureInfo contains information about a signature
+type SignatureInfo struct {
+	// HasPayload indicates if the signature includes payload
+	HasPayload bool
+	// PayloadSize is the size of payload in bytes (0 if not present)
+	PayloadSize int
+	// SignatureSize is the size of the decoded signature in bytes
+	SignatureSize int
+	// HasBundle indicates if the signature includes a bundle
+	HasBundle bool
+}
+
+// ExtractSignatureInfo extracts information from a signature
+func ExtractSignatureInfo(signatureData []byte) (*SignatureInfo, error) {
+	artifactSig, err := ParseArtifactSignature(signatureData)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse signature: %w", err)
+	}
+
+	sigBytes, err := base64.StdEncoding.DecodeString(artifactSig.Base64Signature)
+	if err != nil {
+		return nil, fmt.Errorf("failed to decode signature: %w", err)
+	}
+
+	info := &SignatureInfo{
+		HasPayload:    len(artifactSig.Payload) > 0,
+		PayloadSize:   len(artifactSig.Payload),
+		SignatureSize: len(sigBytes),
+		HasBundle:     artifactSig.Bundle != nil,
+	}
+
+	return info, nil
+}
+
+// GetSignaturePayload extracts payload from signature if present
+func GetSignaturePayload(signatureData []byte) ([]byte, error) {
+	artifactSig, err := ParseArtifactSignature(signatureData)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse signature: %w", err)
+	}
+
+	if len(artifactSig.Payload) == 0 {
+		return nil, fmt.Errorf("signature does not contain payload")
+	}
+
+	return artifactSig.Payload, nil
+}
+
+// CheckSignatureFormat checks if signature data is in valid format
+func CheckSignatureFormat(signatureData []byte) error {
+	_, err := ParseArtifactSignature(signatureData)
+	return err
+}
+
+// LoadPublicKeyFromFile loads a public key from a file
+// Supports PEM format and raw Ed25519 public key (32 bytes)
+func LoadPublicKeyFromFile(filePath string) (crypto.PublicKey, error) {
+	cleanPath := filepath.Clean(filePath)
+	data, err := os.ReadFile(cleanPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read key file: %w", err)
+	}
+
+	return ParsePublicKey(data)
+}
+
+// ParsePublicKey parses a public key from bytes
+// Supports PEM format and raw Ed25519 public key (32 bytes)
+func ParsePublicKey(data []byte) (crypto.PublicKey, error) {
+	// Try PEM format first
+	block, _ := pem.Decode(data)
+	if block != nil {
+		// Try to parse as PKIX public key
+		pub, err := x509.ParsePKIXPublicKey(block.Bytes)
+		if err == nil {
+			edKey, ok := pub.(ed25519.PublicKey)
+			if !ok {
+				return nil, fmt.Errorf("public key is not Ed25519")
+			}
+			return edKey, nil
+		}
+
+		// Try to parse as raw Ed25519 public key
+		if len(block.Bytes) == ed25519.PublicKeySize {
+			return ed25519.PublicKey(block.Bytes), nil
+		}
+	}
+
+	// Try raw Ed25519 public key (32 bytes)
+	if len(data) == ed25519.PublicKeySize {
+		return ed25519.PublicKey(data), nil
+	}
+
+	// Try base64 encoded Ed25519 public key
+	decoded, err := base64.StdEncoding.DecodeString(strings.TrimSpace(string(data)))
+	if err == nil && len(decoded) == ed25519.PublicKeySize {
+		return ed25519.PublicKey(decoded), nil
+	}
+
+	return nil, fmt.Errorf("unable to parse public key: unsupported format")
+}
+
+// ExtractPublicKeyFromPrivateKey extracts public key from a private key
+func ExtractPublicKeyFromPrivateKey(privateKey crypto.PrivateKey) (crypto.PublicKey, error) {
+	edKey, ok := privateKey.(ed25519.PrivateKey)
+	if !ok {
+		return nil, fmt.Errorf("private key is not Ed25519")
+	}
+
+	return edKey.Public(), nil
+}
+
+// ValidatePublicKey validates that a public key is a valid Ed25519 key
+func ValidatePublicKey(publicKey crypto.PublicKey) error {
+	_, ok := publicKey.(ed25519.PublicKey)
+	if !ok {
+		return fmt.Errorf("public key is not Ed25519")
+	}
+	return nil
+}
+
+// VerifySignatureBytes verifies a signature from bytes without reading from file
+func VerifySignatureBytes(ctx context.Context, publicKey crypto.PublicKey, blobData, signatureData []byte) error {
+	verifier, err := NewVerifier(publicKey)
+	if err != nil {
+		return fmt.Errorf("failed to create verifier: %w", err)
+	}
+
+	return verifier.VerifyBlob(ctx, bytes.NewReader(blobData), signatureData)
+}
+
+// VerifyMultipleSignatures verifies multiple signatures against the same blob
+// Returns true if at least one signature is valid
+func VerifyMultipleSignatures(
+	ctx context.Context,
+	publicKey crypto.PublicKey,
+	blobData []byte,
+	signatures [][]byte,
+) (bool, []error) {
+	verifier, err := NewVerifier(publicKey)
+	if err != nil {
+		return false, []error{fmt.Errorf("failed to create verifier: %w", err)}
+	}
+
+	var errors []error
+	for i, sig := range signatures {
+		err := verifier.VerifyBlob(ctx, bytes.NewReader(blobData), sig)
+		if err == nil {
+			return true, nil
+		}
+		errors = append(errors, fmt.Errorf("signature %d: %w", i, err))
+	}
+
+	return false, errors
+}
+
+// FindSignatureFile finds a signature file for a given file path
+// Checks common patterns: file.sig, file.signature, .sig extension
+func FindSignatureFile(filePath string) (string, error) {
+	cleanPath := filepath.Clean(filePath)
+
+	// Try common signature file patterns
+	patterns := []string{
+		cleanPath + ".sig",
+		cleanPath + ".signature",
+		strings.TrimSuffix(cleanPath, filepath.Ext(cleanPath)) + ".sig",
+	}
+
+	for _, pattern := range patterns {
+		if _, err := os.Stat(pattern); err == nil {
+			return pattern, nil
+		}
+	}
+
+	return "", fmt.Errorf("signature file not found for %s", filePath)
+}
+
+// ReadSignatureFile reads a signature from a file
+func ReadSignatureFile(sigPath string) ([]byte, error) {
+	cleanPath := filepath.Clean(sigPath)
+	data, err := os.ReadFile(cleanPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read signature file: %w", err)
+	}
+	return data, nil
+}
+
+// WriteSignatureFile writes signature data to a file with secure permissions
+func WriteSignatureFile(sigPath string, signatureData []byte) error {
+	cleanPath := filepath.Clean(sigPath)
+	if err := os.WriteFile(cleanPath, signatureData, signatureFilePerms); err != nil {
+		return fmt.Errorf("failed to write signature file: %w", err)
+	}
+	return nil
+}
+
+// VerifySignatureFile verifies a signature file for a blob file
+// Automatically finds signature file if sigPath is empty
+func VerifySignatureFile(ctx context.Context, publicKey crypto.PublicKey, filePath, sigPath string) error {
+	verifier, err := NewVerifier(publicKey)
+	if err != nil {
+		return fmt.Errorf("failed to create verifier: %w", err)
+	}
+
+	// Auto-find signature file if not provided
+	if sigPath == "" {
+		foundSigPath, err := FindSignatureFile(filePath)
+		if err != nil {
+			return fmt.Errorf("failed to find signature file: %w", err)
+		}
+		sigPath = foundSigPath
+	}
+
+	return verifier.VerifyBlobFile(ctx, filePath, sigPath)
+}
+
+// CheckSignatureIntegrity performs integrity checks on a signature
+func CheckSignatureIntegrity(signatureData []byte) error {
+	// Parse and validate signature format
+	artifactSig, err := ParseArtifactSignature(signatureData)
+	if err != nil {
+		return fmt.Errorf("invalid signature format: %w", err)
+	}
+
+	// Validate base64 signature can be decoded
+	sigBytes, err := base64.StdEncoding.DecodeString(artifactSig.Base64Signature)
+	if err != nil {
+		return fmt.Errorf("invalid base64 signature: %w", err)
+	}
+
+	// Check signature size (Ed25519 signatures are 64 bytes)
+	if len(sigBytes) != ed25519.SignatureSize {
+		return fmt.Errorf("invalid signature size: expected %d bytes, got %d", ed25519.SignatureSize, len(sigBytes))
 	}
 
 	return nil

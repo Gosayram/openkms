@@ -19,6 +19,7 @@ import (
 	"context"
 	"crypto/ed25519"
 	"crypto/rand"
+	"encoding/base64"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -673,5 +674,556 @@ func TestVerifyBlob_PayloadMismatch(t *testing.T) {
 	err = verifier.VerifyBlob(ctx, bytes.NewReader(modifiedData), signatureData)
 	if err == nil {
 		t.Fatal("Expected verification to fail with payload mismatch")
+	}
+}
+
+func TestExtractSignatureInfo(t *testing.T) {
+	// Generate Ed25519 key pair
+	_, privateKey, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatalf("Failed to generate key: %v", err)
+	}
+
+	// Create signer
+	signer, err := NewSigner(privateKey)
+	if err != nil {
+		t.Fatalf("Failed to create signer: %v", err)
+	}
+
+	// Test data
+	testData := []byte("Test data for signature info extraction")
+
+	// Sign the blob
+	ctx := context.Background()
+	signatureData, err := signer.SignBlob(ctx, bytes.NewReader(testData))
+	if err != nil {
+		t.Fatalf("Failed to sign blob: %v", err)
+	}
+
+	// Extract signature info
+	info, err := ExtractSignatureInfo(signatureData)
+	if err != nil {
+		t.Fatalf("Failed to extract signature info: %v", err)
+	}
+
+	// Verify info
+	if !info.HasPayload {
+		t.Error("Expected signature to have payload")
+	}
+
+	if info.PayloadSize != len(testData) {
+		t.Errorf("Payload size mismatch: got %d, want %d", info.PayloadSize, len(testData))
+	}
+
+	if info.SignatureSize != ed25519.SignatureSize {
+		t.Errorf("Signature size mismatch: got %d, want %d", info.SignatureSize, ed25519.SignatureSize)
+	}
+}
+
+func TestGetSignaturePayload(t *testing.T) {
+	// Generate Ed25519 key pair
+	_, privateKey, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatalf("Failed to generate key: %v", err)
+	}
+
+	// Create signer
+	signer, err := NewSigner(privateKey)
+	if err != nil {
+		t.Fatalf("Failed to create signer: %v", err)
+	}
+
+	// Test data
+	testData := []byte("Test payload extraction")
+
+	// Sign the blob
+	ctx := context.Background()
+	signatureData, err := signer.SignBlob(ctx, bytes.NewReader(testData))
+	if err != nil {
+		t.Fatalf("Failed to sign blob: %v", err)
+	}
+
+	// Extract payload
+	payload, err := GetSignaturePayload(signatureData)
+	if err != nil {
+		t.Fatalf("Failed to get payload: %v", err)
+	}
+
+	if !bytes.Equal(payload, testData) {
+		t.Errorf("Payload mismatch: got %v, want %v", payload, testData)
+	}
+}
+
+func TestGetSignaturePayload_NoPayload(t *testing.T) {
+	// Generate Ed25519 key pair
+	_, privateKey, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatalf("Failed to generate key: %v", err)
+	}
+
+	// Create signer
+	signer, err := NewSigner(privateKey)
+	if err != nil {
+		t.Fatalf("Failed to create signer: %v", err)
+	}
+
+	// Sign using standard format (without payload)
+	ctx := context.Background()
+	testData := []byte("Test data")
+	signatureData, err := signer.SignBlobStandard(ctx, bytes.NewReader(testData))
+	if err != nil {
+		t.Fatalf("Failed to sign blob: %v", err)
+	}
+
+	// Try to extract payload - should fail
+	_, err = GetSignaturePayload(signatureData)
+	if err == nil {
+		t.Fatal("Expected error when payload is not present")
+	}
+}
+
+func TestCheckSignatureFormat(t *testing.T) {
+	// Generate Ed25519 key pair
+	_, privateKey, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatalf("Failed to generate key: %v", err)
+	}
+
+	// Create signer
+	signer, err := NewSigner(privateKey)
+	if err != nil {
+		t.Fatalf("Failed to create signer: %v", err)
+	}
+
+	// Test data
+	testData := []byte("Test signature format check")
+
+	// Sign the blob
+	ctx := context.Background()
+	signatureData, err := signer.SignBlob(ctx, bytes.NewReader(testData))
+	if err != nil {
+		t.Fatalf("Failed to sign blob: %v", err)
+	}
+
+	// Check format - should succeed
+	if err := CheckSignatureFormat(signatureData); err != nil {
+		t.Fatalf("Failed to check signature format: %v", err)
+	}
+
+	// Check invalid format - should fail
+	invalidData := []byte("invalid signature format")
+	if err := CheckSignatureFormat(invalidData); err == nil {
+		t.Fatal("Expected error for invalid signature format")
+	}
+}
+
+func TestLoadPublicKeyFromFile(t *testing.T) {
+	// Create temporary directory
+	tmpDir, err := os.MkdirTemp("", "cosign_test_*")
+	if err != nil {
+		t.Fatalf("Failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	// Generate Ed25519 key pair
+	publicKey, _, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatalf("Failed to generate key: %v", err)
+	}
+
+	// Test raw key format
+	keyFile := filepath.Join(tmpDir, "public.key")
+	if err := os.WriteFile(keyFile, publicKey, 0o644); err != nil {
+		t.Fatalf("Failed to write key file: %v", err)
+	}
+
+	loadedKey, err := LoadPublicKeyFromFile(keyFile)
+	if err != nil {
+		t.Fatalf("Failed to load public key: %v", err)
+	}
+
+	if !bytes.Equal(loadedKey.(ed25519.PublicKey), publicKey) {
+		t.Error("Loaded key does not match original")
+	}
+}
+
+func TestParsePublicKey(t *testing.T) {
+	// Generate Ed25519 key pair
+	publicKey, _, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatalf("Failed to generate key: %v", err)
+	}
+
+	tests := []struct {
+		name    string
+		data    []byte
+		wantErr bool
+	}{
+		{
+			name:    "raw Ed25519 key",
+			data:    publicKey,
+			wantErr: false,
+		},
+		{
+			name:    "base64 encoded key",
+			data:    []byte(base64.StdEncoding.EncodeToString(publicKey)),
+			wantErr: false,
+		},
+		{
+			name:    "invalid key size",
+			data:    []byte("invalid"),
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			parsedKey, err := ParsePublicKey(tt.data)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("ParsePublicKey() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if !tt.wantErr {
+				if parsedKey == nil {
+					t.Error("ParsePublicKey() returned nil key without error")
+				}
+			}
+		})
+	}
+}
+
+func TestExtractPublicKeyFromPrivateKey(t *testing.T) {
+	// Generate Ed25519 key pair
+	publicKey, privateKey, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatalf("Failed to generate key: %v", err)
+	}
+
+	// Extract public key
+	extractedKey, err := ExtractPublicKeyFromPrivateKey(privateKey)
+	if err != nil {
+		t.Fatalf("Failed to extract public key: %v", err)
+	}
+
+	if !bytes.Equal(extractedKey.(ed25519.PublicKey), publicKey) {
+		t.Error("Extracted key does not match original public key")
+	}
+}
+
+func TestExtractPublicKeyFromPrivateKey_InvalidKey(t *testing.T) {
+	// Try with invalid key type
+	_, err := ExtractPublicKeyFromPrivateKey(nil)
+	if err == nil {
+		t.Fatal("Expected error for invalid key type")
+	}
+}
+
+func TestValidatePublicKey(t *testing.T) {
+	// Generate Ed25519 key pair
+	publicKey, _, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatalf("Failed to generate key: %v", err)
+	}
+
+	// Validate valid key
+	if err := ValidatePublicKey(publicKey); err != nil {
+		t.Fatalf("Failed to validate public key: %v", err)
+	}
+
+	// Validate invalid key
+	if err := ValidatePublicKey(nil); err == nil {
+		t.Fatal("Expected error for invalid key")
+	}
+}
+
+func TestVerifySignatureBytes(t *testing.T) {
+	// Generate Ed25519 key pair
+	publicKey, privateKey, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatalf("Failed to generate key: %v", err)
+	}
+
+	// Create signer
+	signer, err := NewSigner(privateKey)
+	if err != nil {
+		t.Fatalf("Failed to create signer: %v", err)
+	}
+
+	// Test data
+	testData := []byte("Test signature bytes verification")
+
+	// Sign the blob
+	ctx := context.Background()
+	signatureData, err := signer.SignBlob(ctx, bytes.NewReader(testData))
+	if err != nil {
+		t.Fatalf("Failed to sign blob: %v", err)
+	}
+
+	// Verify signature bytes
+	if err := VerifySignatureBytes(ctx, publicKey, testData, signatureData); err != nil {
+		t.Fatalf("Failed to verify signature bytes: %v", err)
+	}
+}
+
+func TestVerifyMultipleSignatures(t *testing.T) {
+	// Generate Ed25519 key pair
+	publicKey, privateKey, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatalf("Failed to generate key: %v", err)
+	}
+
+	// Create signer
+	signer, err := NewSigner(privateKey)
+	if err != nil {
+		t.Fatalf("Failed to create signer: %v", err)
+	}
+
+	// Test data
+	testData := []byte("Test multiple signatures verification")
+
+	// Sign the blob multiple times
+	ctx := context.Background()
+	signature1, err := signer.SignBlob(ctx, bytes.NewReader(testData))
+	if err != nil {
+		t.Fatalf("Failed to sign blob: %v", err)
+	}
+
+	signature2, err := signer.SignBlob(ctx, bytes.NewReader(testData))
+	if err != nil {
+		t.Fatalf("Failed to sign blob: %v", err)
+	}
+
+	// Verify multiple signatures
+	signatures := [][]byte{signature1, signature2}
+	verified, errors := VerifyMultipleSignatures(ctx, publicKey, testData, signatures)
+	if !verified {
+		t.Fatalf("Failed to verify signatures: %v", errors)
+	}
+
+	if len(errors) > 0 {
+		t.Errorf("Unexpected errors: %v", errors)
+	}
+}
+
+func TestVerifyMultipleSignatures_AllInvalid(t *testing.T) {
+	// Generate Ed25519 key pair
+	publicKey, _, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatalf("Failed to generate key: %v", err)
+	}
+
+	// Test data
+	testData := []byte("Test data")
+	invalidSignatures := [][]byte{
+		[]byte("invalid signature 1"),
+		[]byte("invalid signature 2"),
+	}
+
+	// Verify multiple invalid signatures
+	ctx := context.Background()
+	verified, errors := VerifyMultipleSignatures(ctx, publicKey, testData, invalidSignatures)
+	if verified {
+		t.Fatal("Expected verification to fail")
+	}
+
+	if len(errors) == 0 {
+		t.Fatal("Expected errors for invalid signatures")
+	}
+}
+
+func TestFindSignatureFile(t *testing.T) {
+	// Create temporary directory
+	tmpDir, err := os.MkdirTemp("", "cosign_test_*")
+	if err != nil {
+		t.Fatalf("Failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	// Create test file
+	testFile := filepath.Join(tmpDir, "test.txt")
+	testData := []byte("test data")
+	if err := os.WriteFile(testFile, testData, 0o644); err != nil {
+		t.Fatalf("Failed to write test file: %v", err)
+	}
+
+	// Create signature file
+	sigFile := testFile + ".sig"
+	sigData := []byte("signature data")
+	if err := os.WriteFile(sigFile, sigData, 0o644); err != nil {
+		t.Fatalf("Failed to write signature file: %v", err)
+	}
+
+	// Find signature file
+	foundSigFile, err := FindSignatureFile(testFile)
+	if err != nil {
+		t.Fatalf("Failed to find signature file: %v", err)
+	}
+
+	if foundSigFile != sigFile {
+		t.Errorf("Found signature file mismatch: got %s, want %s", foundSigFile, sigFile)
+	}
+}
+
+func TestFindSignatureFile_NotFound(t *testing.T) {
+	// Create temporary directory
+	tmpDir, err := os.MkdirTemp("", "cosign_test_*")
+	if err != nil {
+		t.Fatalf("Failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	// Create test file without signature
+	testFile := filepath.Join(tmpDir, "test.txt")
+	testData := []byte("test data")
+	if err := os.WriteFile(testFile, testData, 0o644); err != nil {
+		t.Fatalf("Failed to write test file: %v", err)
+	}
+
+	// Try to find signature file - should fail
+	_, err = FindSignatureFile(testFile)
+	if err == nil {
+		t.Fatal("Expected error when signature file not found")
+	}
+}
+
+func TestReadSignatureFile(t *testing.T) {
+	// Create temporary directory
+	tmpDir, err := os.MkdirTemp("", "cosign_test_*")
+	if err != nil {
+		t.Fatalf("Failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	// Create signature file
+	sigFile := filepath.Join(tmpDir, "test.sig")
+	sigData := []byte("signature data")
+	if err := os.WriteFile(sigFile, sigData, 0o644); err != nil {
+		t.Fatalf("Failed to write signature file: %v", err)
+	}
+
+	// Read signature file
+	readData, err := ReadSignatureFile(sigFile)
+	if err != nil {
+		t.Fatalf("Failed to read signature file: %v", err)
+	}
+
+	if !bytes.Equal(readData, sigData) {
+		t.Errorf("Read data mismatch: got %v, want %v", readData, sigData)
+	}
+}
+
+func TestWriteSignatureFile(t *testing.T) {
+	// Create temporary directory
+	tmpDir, err := os.MkdirTemp("", "cosign_test_*")
+	if err != nil {
+		t.Fatalf("Failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	// Write signature file
+	sigFile := filepath.Join(tmpDir, "test.sig")
+	sigData := []byte("signature data")
+	if err := WriteSignatureFile(sigFile, sigData); err != nil {
+		t.Fatalf("Failed to write signature file: %v", err)
+	}
+
+	// Verify file was created with correct permissions
+	info, err := os.Stat(sigFile)
+	if err != nil {
+		t.Fatalf("Failed to stat signature file: %v", err)
+	}
+
+	if info.Mode().Perm() != signatureFilePerms {
+		t.Errorf("File permissions mismatch: got %o, want %o", info.Mode().Perm(), signatureFilePerms)
+	}
+
+	// Read and verify content
+	readData, err := os.ReadFile(sigFile)
+	if err != nil {
+		t.Fatalf("Failed to read signature file: %v", err)
+	}
+
+	if !bytes.Equal(readData, sigData) {
+		t.Errorf("Read data mismatch: got %v, want %v", readData, sigData)
+	}
+}
+
+func TestVerifySignatureFile(t *testing.T) {
+	// Create temporary directory
+	tmpDir, err := os.MkdirTemp("", "cosign_test_*")
+	if err != nil {
+		t.Fatalf("Failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	// Generate Ed25519 key pair
+	publicKey, privateKey, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatalf("Failed to generate key: %v", err)
+	}
+
+	// Create signer
+	signer, err := NewSigner(privateKey)
+	if err != nil {
+		t.Fatalf("Failed to create signer: %v", err)
+	}
+
+	// Create test file
+	testFile := filepath.Join(tmpDir, "test.txt")
+	testData := []byte("Test signature file verification")
+	if err := os.WriteFile(testFile, testData, 0o644); err != nil {
+		t.Fatalf("Failed to write test file: %v", err)
+	}
+
+	// Sign the file
+	ctx := context.Background()
+	sigPath, err := signer.SignBlobFile(ctx, testFile)
+	if err != nil {
+		t.Fatalf("Failed to sign file: %v", err)
+	}
+
+	// Verify signature file with explicit path
+	if err := VerifySignatureFile(ctx, publicKey, testFile, sigPath); err != nil {
+		t.Fatalf("Failed to verify signature file: %v", err)
+	}
+
+	// Verify signature file with auto-find
+	if err := VerifySignatureFile(ctx, publicKey, testFile, ""); err != nil {
+		t.Fatalf("Failed to verify signature file with auto-find: %v", err)
+	}
+}
+
+func TestCheckSignatureIntegrity(t *testing.T) {
+	// Generate Ed25519 key pair
+	_, privateKey, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatalf("Failed to generate key: %v", err)
+	}
+
+	// Create signer
+	signer, err := NewSigner(privateKey)
+	if err != nil {
+		t.Fatalf("Failed to create signer: %v", err)
+	}
+
+	// Test data
+	testData := []byte("Test signature integrity check")
+
+	// Sign the blob
+	ctx := context.Background()
+	signatureData, err := signer.SignBlob(ctx, bytes.NewReader(testData))
+	if err != nil {
+		t.Fatalf("Failed to sign blob: %v", err)
+	}
+
+	// Check integrity - should succeed
+	if err := CheckSignatureIntegrity(signatureData); err != nil {
+		t.Fatalf("Failed to check signature integrity: %v", err)
+	}
+
+	// Check invalid signature - should fail
+	invalidData := []byte("invalid signature")
+	if err := CheckSignatureIntegrity(invalidData); err == nil {
+		t.Fatal("Expected error for invalid signature")
 	}
 }
