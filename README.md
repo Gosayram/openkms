@@ -2,6 +2,8 @@
 
 OpenKMS is a skeleton implementation of a Key Management Service (KMS) written in Go. It provides a foundation for building production-ready key management systems with essential security features and extensible architecture.
 
+![openkms logo](logo/openkms_logo.jpg)
+
 ## Overview
 
 OpenKMS is designed as a modular, secure, and scalable key management service that handles cryptographic key lifecycle, encryption/decryption operations, digital signatures, and HMAC computation. The project serves as a starting point for organizations that need a custom KMS solution tailored to their specific requirements.
@@ -55,7 +57,9 @@ This is a skeleton implementation. The project provides a solid foundation with 
 make build
 ```
 
-This will build both the server (`openkms-server`) and CLI (`openkms-cli`) binaries.
+This will build both the server (`openkms-server`) and CLI (`openkms-cli`) binaries in the `bin/` directory.
+
+For more build options, see the `Makefile` or run `make help`.
 
 ### Running the Server
 
@@ -63,13 +67,29 @@ This will build both the server (`openkms-server`) and CLI (`openkms-cli`) binar
 ./bin/openkms-server
 ```
 
-The server will start on `localhost:8080` by default. Configuration can be provided via environment variables (see `internal/config/config.go` for available options).
+The server will start on `localhost:8080` by default. Configuration can be provided via environment variables. See `internal/config/config.go` for available configuration options.
 
 ### Using the CLI
 
 ```bash
 ./bin/openkms-cli --help
 ```
+
+The CLI provides commands for key management, cryptographic operations, and service administration.
+
+### Testing
+
+```bash
+make test
+```
+
+Run tests with coverage:
+
+```bash
+make test-coverage
+```
+
+This will generate a coverage report to help ensure code quality and test completeness.
 
 ## Project Structure
 
@@ -100,7 +120,7 @@ Licensed under the Apache License, Version 2.0. See [LICENSE](#LICENSE) file for
 
 ## Contributing
 
-This is a skeleton project. Contributions, improvements, and feedback are welcome. Please ensure all code follows the project's coding standards and includes appropriate tests.
+This is a skeleton project. Contributions, improvements, and feedback are welcome. 
 
 ## Repository
 

@@ -19,7 +19,7 @@ while IFS= read -r -d '' file; do
             ERRORS=$((ERRORS + 1))
         fi
     fi
-done < <(find . -name "*.go" -not -path "./vendor/*" -not -path "./.git/*" -not -path "./hack/*" -print0)
+done < <(find . -name "*.go" -not -path "./vendor/*" -not -path "./.git/*" -not -path "./hack/*" -not -path "./logo/*" -print0)
 
 if [ $ERRORS -eq 0 ]; then
     echo "✅ All files have correct copyright"

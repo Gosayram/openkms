@@ -32,6 +32,7 @@ done < <(find . -type f \( -name "*.go" -o -name "*.sh" -o -name "*.yaml" -o -na
     -not -path "./.git/*" \
     -not -path "./hack/*" \
     -not -path "./bin/*" \
+    -not -path "./logo/*" \
     -print0)
 
 if [ $UPDATED -eq 0 ]; then
