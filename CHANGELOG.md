@@ -18,10 +18,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 - Added cosign public key for release artifacts validation
+- Implement high availability support with leader election
 
 ### Changed
 - Added logo and minimal improve README
+- Merge pull request #10 from Gosayram/feature/telegram_announce
 - Merge pull request #7 from Gosayram/fix/cosign_key
+- Merge pull request #8 from Gosayram/docs/logo
+- Merge pull request #9 from Gosayram/feature/phase_3_2
 
 ### Fixed
 - Exclude logo folder for checking  copyright scripts
