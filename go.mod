@@ -7,6 +7,7 @@ require (
 	github.com/casbin/casbin/v2 v2.134.0
 	github.com/coreos/go-oidc/v3 v3.16.0
 	github.com/go-chi/chi/v5 v5.2.3
+	github.com/google/go-containerregistry v0.20.6
 	github.com/google/go-tpm v0.9.7
 	github.com/jackc/pgx/v5 v5.7.6
 	github.com/miekg/pkcs11 v1.1.1
@@ -17,7 +18,7 @@ require (
 	go.etcd.io/bbolt v1.4.3
 	go.etcd.io/etcd/client/v3 v3.6.6
 	go.uber.org/zap v1.27.0
-	golang.org/x/crypto v0.44.0
+	golang.org/x/crypto v0.45.0
 	golang.org/x/oauth2 v0.33.0
 )
 
@@ -91,7 +92,6 @@ require (
 	github.com/golang/snappy v0.0.4 // indirect
 	github.com/google/certificate-transparency-go v1.3.2 // indirect
 	github.com/google/go-cmp v0.7.0 // indirect
-	github.com/google/go-containerregistry v0.20.6 // indirect
 	github.com/google/s2a-go v0.1.9 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/googleapis/enterprise-certificate-proxy v0.3.6 // indirect
@@ -170,7 +170,7 @@ require (
 	go.yaml.in/yaml/v3 v3.0.4 // indirect
 	golang.org/x/exp v0.0.0-20250620022241-b7579e27df2b // indirect
 	golang.org/x/mod v0.29.0 // indirect
-	golang.org/x/net v0.46.0 // indirect
+	golang.org/x/net v0.47.0 // indirect
 	golang.org/x/sync v0.18.0 // indirect
 	golang.org/x/sys v0.38.0 // indirect
 	golang.org/x/term v0.37.0 // indirect
