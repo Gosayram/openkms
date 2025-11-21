@@ -5,7 +5,7 @@ go 1.25.1
 require (
 	github.com/alecthomas/kong v1.13.0
 	github.com/casbin/casbin/v2 v2.134.0
-	github.com/coreos/go-oidc/v3 v3.16.0
+	github.com/coreos/go-oidc/v3 v3.17.0
 	github.com/go-chi/chi/v5 v5.2.3
 	github.com/google/go-containerregistry v0.20.6
 	github.com/google/go-tpm v0.9.7
