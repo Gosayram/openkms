@@ -39,8 +39,22 @@ func Middleware(manager *Manager, logger *zap.Logger, requireAuth bool) func(htt
 			var identity *Identity
 			var err error
 
-			// Try mTLS first if available
+			// Try SPIFFE authentication first if available and mTLS is present
 			if r.TLS != nil && len(r.TLS.PeerCertificates) > 0 {
+				// Check if we have a SPIFFE provider in the manager
+				for _, provider := range manager.providers {
+					if spiffeProvider, ok := provider.(*SPIFFEProvider); ok {
+						identity, err = spiffeProvider.AuthenticateFromRequest(r)
+						if err == nil {
+							// Set identity in context
+							ctx := WithIdentity(r.Context(), identity)
+							next.ServeHTTP(w, r.WithContext(ctx))
+							return
+						}
+					}
+				}
+				
+				// Fallback to regular mTLS if SPIFFE fails
 				mtlsProvider := NewMTLSProvider()
 				identity, err = mtlsProvider.AuthenticateFromRequest(r)
 				if err == nil {

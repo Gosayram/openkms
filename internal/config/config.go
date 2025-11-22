@@ -113,13 +113,21 @@ type SecurityConfig struct {
 
 // AuthConfig contains authentication configuration
 type AuthConfig struct {
-	Providers        []string // "static", "mtls", "oidc"
+	Providers        []string // "static", "mtls", "oidc", "spiffe"
 	OIDCIssuer       string
 	OIDCClientID     string
 	OIDCClientSecret string
 	OIDCRedirectURL  string
 	OIDCScopes       []string
 	OIDCUserIDClaim  string
+	SPIFFE           SPIFFEConfig
+}
+
+// SPIFFEConfig contains SPIFFE authentication configuration
+type SPIFFEConfig struct {
+	TrustDomain     string   // SPIFFE trust domain (required)
+	BundlePaths     []string // Paths to trust bundle files (optional)
+	WorkloadSocket  string   // Workload API socket path (optional)
 }
 
 // LoggingConfig contains logging configuration
@@ -216,6 +224,11 @@ func Load() (*Config, error) {
 				OIDCRedirectURL:  getEnv("OPENKMS_OIDC_REDIRECT_URL", ""),
 				OIDCScopes:       getEnvSlice("OPENKMS_OIDC_SCOPES", []string{"openid", "profile", "email"}),
 				OIDCUserIDClaim:  getEnv("OPENKMS_OIDC_USER_ID_CLAIM", "sub"),
+				SPIFFE: SPIFFEConfig{
+					TrustDomain:    getEnv("OPENKMS_SPIFFE_TRUST_DOMAIN", ""),
+					BundlePaths:    getEnvSlice("OPENKMS_SPIFFE_BUNDLE_PATHS", []string{}),
+					WorkloadSocket: getEnv("OPENKMS_SPIFFE_WORKLOAD_SOCKET", ""),
+				},
 			},
 		},
 		Logging: LoggingConfig{

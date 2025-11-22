@@ -271,19 +271,54 @@ func initializeStorage(cfg *config.Config, logger *zap.Logger) (storage.Backend,
 }
 
 // initializeAuth initializes authentication manager
-func initializeAuth(_ *config.Config, _ *zap.Logger) *authn.Manager {
-	// Create static token provider
-	staticProvider := authn.NewStaticProvider()
+func initializeAuth(cfg *config.Config, logger *zap.Logger) *authn.Manager {
+	var providers []authn.Provider
 
-	// TODO: Load tokens from configuration
-	// For now, create a default admin token (dev only)
-	// In production, tokens should be loaded from secure storage
+	// Check which providers are enabled
+	enabledProviders := make(map[string]bool)
+	for _, provider := range cfg.Security.Auth.Providers {
+		enabledProviders[provider] = true
+	}
 
-	// Create mTLS provider
-	mtlsProvider := authn.NewMTLSProvider()
+	// Create static token provider if enabled
+	if enabledProviders["static"] {
+		staticProvider := authn.NewStaticProvider()
+		
+		// TODO: Load tokens from configuration
+		// For now, create a default admin token (dev only)
+		// In production, tokens should be loaded from secure storage
+		
+		providers = append(providers, staticProvider)
+		logger.Info("Static authentication provider enabled")
+	}
 
-	// Create auth manager with both providers
-	return authn.NewManager(staticProvider, mtlsProvider)
+	// Create mTLS provider if enabled
+	if enabledProviders["mtls"] {
+		mtlsProvider := authn.NewMTLSProvider()
+		providers = append(providers, mtlsProvider)
+		logger.Info("mTLS authentication provider enabled")
+	}
+
+	// Create SPIFFE provider if enabled
+	if enabledProviders["spiffe"] {
+		spiffeConfig := &authn.SPIFFEConfig{
+			TrustDomain:    cfg.Security.Auth.SPIFFE.TrustDomain,
+			BundlePaths:    cfg.Security.Auth.SPIFFE.BundlePaths,
+			WorkloadSocket: cfg.Security.Auth.SPIFFE.WorkloadSocket,
+		}
+		
+		spiffeProvider, err := authn.NewSPIFFEProvider(spiffeConfig)
+		if err != nil {
+			logger.Fatal("Failed to initialize SPIFFE provider", zap.Error(err))
+		}
+		
+		providers = append(providers, spiffeProvider)
+		logger.Info("SPIFFE authentication provider enabled",
+			zap.String("trust_domain", cfg.Security.Auth.SPIFFE.TrustDomain))
+	}
+
+	// Create auth manager with configured providers
+	return authn.NewManager(providers...)
 }
 
 // setupMiddleware sets up HTTP middleware
