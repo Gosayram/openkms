@@ -125,9 +125,9 @@ type AuthConfig struct {
 
 // SPIFFEConfig contains SPIFFE authentication configuration
 type SPIFFEConfig struct {
-	TrustDomain     string   // SPIFFE trust domain (required)
-	BundlePaths     []string // Paths to trust bundle files (optional)
-	WorkloadSocket  string   // Workload API socket path (optional)
+	TrustDomain    string   // SPIFFE trust domain (required)
+	BundlePaths    []string // Paths to trust bundle files (optional)
+	WorkloadSocket string   // Workload API socket path (optional)
 }
 
 // LoggingConfig contains logging configuration

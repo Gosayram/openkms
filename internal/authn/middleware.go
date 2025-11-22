@@ -53,7 +53,7 @@ func Middleware(manager *Manager, logger *zap.Logger, requireAuth bool) func(htt
 						}
 					}
 				}
-				
+
 				// Fallback to regular mTLS if SPIFFE fails
 				mtlsProvider := NewMTLSProvider()
 				identity, err = mtlsProvider.AuthenticateFromRequest(r)

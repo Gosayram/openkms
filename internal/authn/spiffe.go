@@ -23,8 +23,8 @@ import (
 	"strings"
 
 	"github.com/spiffe/go-spiffe/v2/bundle/x509bundle"
-	"github.com/spiffe/go-spiffe/v2/svid/x509svid"
 	"github.com/spiffe/go-spiffe/v2/spiffeid"
+	"github.com/spiffe/go-spiffe/v2/svid/x509svid"
 	"github.com/spiffe/go-spiffe/v2/workloadapi"
 )
 
@@ -150,7 +150,7 @@ func (s *SPIFFEProvider) authenticateFromCertificate(cert *x509.Certificate) (*I
 
 	// Extract SPIFFE ID components
 	spiffeIDStr := spiffeID.String()
-	
+
 	// Parse the SPIFFE ID to extract components
 	idURL, err := url.Parse(spiffeIDStr)
 	if err != nil {
@@ -160,13 +160,13 @@ func (s *SPIFFEProvider) authenticateFromCertificate(cert *x509.Certificate) (*I
 	// Extract path components for metadata
 	path := strings.TrimPrefix(idURL.Path, "/")
 	pathComponents := strings.Split(path, "/")
-	
+
 	metadata := map[string]string{
-		"spiffe_id":   spiffeIDStr,
+		"spiffe_id":    spiffeIDStr,
 		"trust_domain": s.trustDomain.String(),
-		"serial":      cert.SerialNumber.String(),
-		"not_before":  cert.NotBefore.Format("2006-01-02T15:04:05Z"),
-		"not_after":   cert.NotAfter.Format("2006-01-02T15:04:05Z"),
+		"serial":       cert.SerialNumber.String(),
+		"not_before":   cert.NotBefore.Format("2006-01-02T15:04:05Z"),
+		"not_after":    cert.NotAfter.Format("2006-01-02T15:04:05Z"),
 	}
 
 	// Add path components to metadata

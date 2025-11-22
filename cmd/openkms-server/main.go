@@ -283,11 +283,11 @@ func initializeAuth(cfg *config.Config, logger *zap.Logger) *authn.Manager {
 	// Create static token provider if enabled
 	if enabledProviders["static"] {
 		staticProvider := authn.NewStaticProvider()
-		
+
 		// TODO: Load tokens from configuration
 		// For now, create a default admin token (dev only)
 		// In production, tokens should be loaded from secure storage
-		
+
 		providers = append(providers, staticProvider)
 		logger.Info("Static authentication provider enabled")
 	}
@@ -306,12 +306,12 @@ func initializeAuth(cfg *config.Config, logger *zap.Logger) *authn.Manager {
 			BundlePaths:    cfg.Security.Auth.SPIFFE.BundlePaths,
 			WorkloadSocket: cfg.Security.Auth.SPIFFE.WorkloadSocket,
 		}
-		
+
 		spiffeProvider, err := authn.NewSPIFFEProvider(spiffeConfig)
 		if err != nil {
 			logger.Fatal("Failed to initialize SPIFFE provider", zap.Error(err))
 		}
-		
+
 		providers = append(providers, spiffeProvider)
 		logger.Info("SPIFFE authentication provider enabled",
 			zap.String("trust_domain", cfg.Security.Auth.SPIFFE.TrustDomain))

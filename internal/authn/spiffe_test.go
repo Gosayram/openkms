@@ -73,7 +73,7 @@ func TestSPIFFEProvider_NewSPIFFEProvider(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			provider, err := NewSPIFFEProvider(tt.config)
-			
+
 			if tt.expectError {
 				assert.Error(t, err)
 				assert.Contains(t, err.Error(), tt.errorMsg)
@@ -91,7 +91,7 @@ func TestSPIFFEProvider_GetTrustDomain(t *testing.T) {
 	provider := &SPIFFEProvider{
 		trustDomain: spiffeid.RequireTrustDomainFromString("example.org"),
 	}
-	
+
 	trustDomain := provider.GetTrustDomain()
 	assert.Equal(t, "example.org", trustDomain.String())
 }
@@ -100,7 +100,7 @@ func TestSPIFFEProvider_Authenticate(t *testing.T) {
 	provider := &SPIFFEProvider{
 		trustDomain: spiffeid.RequireTrustDomainFromString("example.org"),
 	}
-	
+
 	// SPIFFE provider doesn't support token authentication
 	identity, err := provider.Authenticate(nil, "some-token")
 	assert.Error(t, err)
@@ -112,7 +112,7 @@ func TestSPIFFEProvider_ValidateToken(t *testing.T) {
 	provider := &SPIFFEProvider{
 		trustDomain: spiffeid.RequireTrustDomainFromString("example.org"),
 	}
-	
+
 	// SPIFFE provider doesn't support token validation
 	err := provider.ValidateToken(nil, "some-token")
 	assert.Error(t, err)
@@ -147,9 +147,9 @@ func TestSPIFFEProvider_AuthenticateFromRequest(t *testing.T) {
 			provider := &SPIFFEProvider{
 				trustDomain: spiffeid.RequireTrustDomainFromString("example.org"),
 			}
-			
+
 			identity, err := provider.AuthenticateFromRequest(tt.request)
-			
+
 			if tt.expectError {
 				assert.Error(t, err)
 				assert.Contains(t, err.Error(), tt.errorMsg)
@@ -165,11 +165,11 @@ func TestSPIFFEProvider_AuthenticateFromRequest(t *testing.T) {
 func TestSPIFFEProvider_authenticateFromCertificate(t *testing.T) {
 	// Create a test certificate with SPIFFE ID
 	cert := createTestCertificate(t, "spiffe://example.org/test-service")
-	
+
 	provider := &SPIFFEProvider{
 		trustDomain: spiffeid.RequireTrustDomainFromString("example.org"),
 	}
-	
+
 	identity, err := provider.authenticateFromCertificate(cert)
 	assert.NoError(t, err)
 	assert.NotNil(t, identity)
@@ -184,11 +184,11 @@ func TestSPIFFEProvider_authenticateFromCertificate(t *testing.T) {
 func TestSPIFFEProvider_authenticateFromCertificate_WrongTrustDomain(t *testing.T) {
 	// Create a test certificate with different trust domain
 	cert := createTestCertificate(t, "spiffe://other.org/test-service")
-	
+
 	provider := &SPIFFEProvider{
 		trustDomain: spiffeid.RequireTrustDomainFromString("example.org"),
 	}
-	
+
 	identity, err := provider.authenticateFromCertificate(cert)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "trust domain other.org does not match expected example.org")
@@ -198,11 +198,11 @@ func TestSPIFFEProvider_authenticateFromCertificate_WrongTrustDomain(t *testing.
 func TestSPIFFEProvider_authenticateFromCertificate_InvalidSPIFFEID(t *testing.T) {
 	// Create a test certificate without SPIFFE ID
 	cert := createTestCertificate(t, "test-service")
-	
+
 	provider := &SPIFFEProvider{
 		trustDomain: spiffeid.RequireTrustDomainFromString("example.org"),
 	}
-	
+
 	identity, err := provider.authenticateFromCertificate(cert)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "failed to extract SPIFFE ID from certificate")
@@ -213,32 +213,32 @@ func createTestCertificate(t *testing.T, spiffeID string) *x509.Certificate {
 	// Generate a test certificate
 	serialNumber, err := rand.Int(rand.Reader, new(big.Int).Lsh(big.NewInt(1), 128))
 	require.NoError(t, err)
-	
+
 	template := x509.Certificate{
 		SerialNumber: serialNumber,
 		Subject: pkix.Name{
 			CommonName: spiffeID,
 		},
-		URIs:           []*url.URL{mustParseURL(spiffeID)},
-		NotBefore:      time.Now(),
-		NotAfter:       time.Now().Add(24 * time.Hour),
-		KeyUsage:       x509.KeyUsageDigitalSignature | x509.KeyUsageKeyEncipherment,
-		ExtKeyUsage:    []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth, x509.ExtKeyUsageClientAuth},
+		URIs:                  []*url.URL{mustParseURL(spiffeID)},
+		NotBefore:             time.Now(),
+		NotAfter:              time.Now().Add(24 * time.Hour),
+		KeyUsage:              x509.KeyUsageDigitalSignature | x509.KeyUsageKeyEncipherment,
+		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth, x509.ExtKeyUsageClientAuth},
 		BasicConstraintsValid: true,
 	}
-	
+
 	// Generate private key
 	privateKey, err := rsa.GenerateKey(rand.Reader, 2048)
 	require.NoError(t, err)
-	
+
 	// Create certificate
 	certDER, err := x509.CreateCertificate(rand.Reader, &template, &template, &privateKey.PublicKey, privateKey)
 	require.NoError(t, err)
-	
+
 	// Parse certificate
 	cert, err := x509.ParseCertificate(certDER)
 	require.NoError(t, err)
-	
+
 	return cert
 }
 
@@ -255,7 +255,7 @@ func TestIsWorkloadAPIAvailable(t *testing.T) {
 	// Test with default socket path (likely not available in test environment)
 	available := IsWorkloadAPIAvailable("")
 	assert.False(t, available) // Should be false in test environment
-	
+
 	// Test with invalid socket path
 	available = IsWorkloadAPIAvailable("/invalid/path")
 	assert.False(t, available)
