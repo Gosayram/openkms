@@ -13,7 +13,7 @@ require (
 	github.com/miekg/pkcs11 v1.1.1
 	github.com/prometheus/client_golang v1.23.2
 	github.com/sigstore/cosign/v3 v3.0.2
-	github.com/sigstore/sigstore v1.10.0
+	github.com/sigstore/sigstore v1.10.2
 	github.com/stretchr/testify v1.11.1
 	go.etcd.io/bbolt v1.4.3
 	go.etcd.io/etcd/client/v3 v3.6.6
