@@ -74,6 +74,52 @@ var (
 		},
 		[]string{"key_id"},
 	)
+
+	// ConnectionPoolMaxConns tracks maximum connections in pool
+	ConnectionPoolMaxConns = promauto.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "openkms_connection_pool_max_connections",
+			Help: "Maximum number of connections in the pool",
+		},
+		[]string{"backend"},
+	)
+
+	// ConnectionPoolCurrentConns tracks current connections in use
+	ConnectionPoolCurrentConns = promauto.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "openkms_connection_pool_current_connections",
+			Help: "Current number of connections in use",
+		},
+		[]string{"backend"},
+	)
+
+	// ConnectionPoolIdleConns tracks idle connections
+	ConnectionPoolIdleConns = promauto.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "openkms_connection_pool_idle_connections",
+			Help: "Current number of idle connections",
+		},
+		[]string{"backend"},
+	)
+
+	// ConnectionPoolAcquiresTotal tracks connection acquisitions
+	ConnectionPoolAcquiresTotal = promauto.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "openkms_connection_pool_acquires_total",
+			Help: "Total number of connection acquisitions from pool",
+		},
+		[]string{"backend", "result"},
+	)
+
+	// ConnectionPoolAcquireDuration tracks connection acquisition time
+	ConnectionPoolAcquireDuration = promauto.NewHistogramVec(
+		prometheus.HistogramOpts{
+			Name:    "openkms_connection_pool_acquire_duration_seconds",
+			Help:    "Time spent acquiring connections from pool",
+			Buckets: prometheus.DefBuckets,
+		},
+		[]string{"backend"},
+	)
 )
 
 // RecordOperation records an operation with duration and status
@@ -100,4 +146,17 @@ func SetActiveKeys(count float64) {
 // RecordKeyRotation records a key rotation
 func RecordKeyRotation(keyID string) {
 	KeyRotations.WithLabelValues(keyID).Inc()
+}
+
+// RecordConnectionPoolStats records connection pool statistics
+func RecordConnectionPoolStats(backend string, maxConns, currentConns, idleConns int32) {
+	ConnectionPoolMaxConns.WithLabelValues(backend).Set(float64(maxConns))
+	ConnectionPoolCurrentConns.WithLabelValues(backend).Set(float64(currentConns))
+	ConnectionPoolIdleConns.WithLabelValues(backend).Set(float64(idleConns))
+}
+
+// RecordConnectionAcquisition records a connection acquisition attempt
+func RecordConnectionAcquisition(backend, result string, duration float64) {
+	ConnectionPoolAcquiresTotal.WithLabelValues(backend, result).Inc()
+	ConnectionPoolAcquireDuration.WithLabelValues(backend).Observe(duration)
 }

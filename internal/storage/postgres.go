@@ -18,8 +18,10 @@ package storage
 import (
 	"context"
 	"fmt"
+	"math/rand"
 	"time"
 
+	"github.com/Gosayram/openkms/internal/metrics"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -37,11 +39,40 @@ const (
 	defaultPingTimeout = 5 * time.Second
 	// defaultMigrationTimeout is the default timeout for migration operations
 	defaultMigrationTimeout = 30 * time.Second
+	// defaultHealthCheckPeriod is the default health check period for connections
+	defaultHealthCheckPeriod = 30 * time.Second
+	// defaultMaxConnLifetimeJitter is the jitter for connection lifetime to avoid connection storms
+	defaultMaxConnLifetimeJitter = 30 * time.Second
 )
 
 // PostgresBackend is a PostgreSQL-based storage backend
 type PostgresBackend struct {
 	pool *pgxpool.Pool
+}
+
+// PoolStats returns connection pool statistics for monitoring
+func (p *PostgresBackend) PoolStats() *pgxpool.Stat {
+	return p.pool.Stat()
+}
+
+// AcquireConnection acquires a connection from the pool with timeout
+func (p *PostgresBackend) AcquireConnection(ctx context.Context) (*pgxpool.Conn, error) {
+	return p.pool.Acquire(ctx)
+}
+
+// MaxConnections returns the maximum number of connections in the pool
+func (p *PostgresBackend) MaxConnections() int32 {
+	return p.pool.Config().MaxConns
+}
+
+// CurrentConnections returns the current number of connections in use
+func (p *PostgresBackend) CurrentConnections() int32 {
+	return p.pool.Stat().TotalConns()
+}
+
+// IdleConnections returns the current number of idle connections
+func (p *PostgresBackend) IdleConnections() int32 {
+	return p.pool.Stat().IdleConns()
 }
 
 // PostgresConfig holds PostgreSQL connection configuration
@@ -56,6 +87,14 @@ type PostgresConfig struct {
 	ConnMaxLifetime time.Duration
 	// ConnMaxIdleTime is the maximum idle connection time (default: 10m)
 	ConnMaxIdleTime time.Duration
+	// HealthCheckPeriod is the health check period for connections (default: 30s)
+	HealthCheckPeriod time.Duration
+	// MaxConnLifetimeJitter adds jitter to connection lifetime to avoid connection storms (default: 30s)
+	MaxConnLifetimeJitter time.Duration
+	// EnableConnectionTimeout enables connection timeout (default: true)
+	EnableConnectionTimeout bool
+	// ConnectionTimeout is the timeout for establishing new connections (default: 5s)
+	ConnectionTimeout time.Duration
 }
 
 // NewPostgresBackend creates a new PostgreSQL-based storage backend
@@ -66,7 +105,7 @@ func NewPostgresBackend(config PostgresConfig) (*PostgresBackend, error) {
 		return nil, fmt.Errorf("failed to parse connection string: %w", err)
 	}
 
-	// Configure connection pool
+	// Configure connection pool with enhanced settings
 	maxConns := config.MaxConns
 	if maxConns == 0 {
 		maxConns = defaultMaxConns
@@ -83,6 +122,17 @@ func NewPostgresBackend(config PostgresConfig) (*PostgresBackend, error) {
 	if connMaxLifetime == 0 {
 		connMaxLifetime = defaultConnMaxLifetime
 	}
+
+	// Add jitter to connection lifetime to avoid connection storms
+	jitter := config.MaxConnLifetimeJitter
+	if jitter == 0 {
+		jitter = defaultMaxConnLifetimeJitter
+	}
+	if jitter > 0 {
+		// Add random jitter up to the specified duration
+		jitterAmount := time.Duration(rand.Int63n(int64(jitter)))
+		connMaxLifetime += jitterAmount
+	}
 	pgxConfig.MaxConnLifetime = connMaxLifetime
 
 	connMaxIdleTime := config.ConnMaxIdleTime
@@ -90,6 +140,40 @@ func NewPostgresBackend(config PostgresConfig) (*PostgresBackend, error) {
 		connMaxIdleTime = defaultConnMaxIdleTime
 	}
 	pgxConfig.MaxConnIdleTime = connMaxIdleTime
+
+	healthCheckPeriod := config.HealthCheckPeriod
+	if healthCheckPeriod == 0 {
+		healthCheckPeriod = defaultHealthCheckPeriod
+	}
+	pgxConfig.HealthCheckPeriod = healthCheckPeriod
+
+	// Configure connection timeout if enabled
+	if config.EnableConnectionTimeout {
+		connTimeout := config.ConnectionTimeout
+		if connTimeout == 0 {
+			connTimeout = defaultPingTimeout
+		}
+		// Set connection timeout via context in the connection string
+		pgxConfig.ConnConfig.ConnectTimeout = connTimeout
+	}
+
+	// Configure connection callbacks for better monitoring
+	pgxConfig.BeforeAcquire = func(ctx context.Context, conn *pgx.Conn) bool {
+		// This is called before a connection is acquired from the pool
+		// Return false to reject the connection
+		return true
+	}
+
+	pgxConfig.AfterConnect = func(ctx context.Context, conn *pgx.Conn) error {
+		// This is called after a new connection is established
+		// Can be used for connection-specific setup
+		return nil
+	}
+
+	pgxConfig.BeforeClose = func(conn *pgx.Conn) {
+		// This is called before a connection is closed
+		// Can be used for cleanup
+	}
 
 	// Create connection pool
 	pool, err := pgxpool.NewWithConfig(context.Background(), pgxConfig)
@@ -116,18 +200,36 @@ func NewPostgresBackend(config PostgresConfig) (*PostgresBackend, error) {
 		return nil, fmt.Errorf("failed to run migrations: %w", err)
 	}
 
-	return &PostgresBackend{
+	backend := &PostgresBackend{
 		pool: pool,
-	}, nil
+	}
+
+	// Start metrics collection goroutine
+	go backend.collectMetricsPeriodically()
+
+	return backend, nil
 }
 
 // Get retrieves a value by key
 //
 //nolint:revive // ctx parameter is required by Backend interface
 func (p *PostgresBackend) Get(ctx context.Context, key string) ([]byte, error) {
-	var value []byte
+	start := time.Now()
 
-	err := p.pool.QueryRow(ctx, "SELECT value FROM storage_data WHERE key = $1", key).Scan(&value)
+	// Record connection acquisition attempt
+	conn, err := p.pool.Acquire(ctx)
+	if err != nil {
+		duration := time.Since(start).Seconds()
+		metrics.RecordConnectionAcquisition("postgres", "error", duration)
+		return nil, fmt.Errorf("failed to acquire connection: %w", err)
+	}
+	defer conn.Release()
+
+	duration := time.Since(start).Seconds()
+	metrics.RecordConnectionAcquisition("postgres", "success", duration)
+
+	var value []byte
+	err = conn.QueryRow(ctx, "SELECT value FROM storage_data WHERE key = $1", key).Scan(&value)
 	if err != nil {
 		if err == pgx.ErrNoRows {
 			return nil, ErrNotFound
@@ -142,6 +244,20 @@ func (p *PostgresBackend) Get(ctx context.Context, key string) ([]byte, error) {
 //
 //nolint:revive // ctx parameter is required by Backend interface
 func (p *PostgresBackend) Put(ctx context.Context, key string, value []byte) error {
+	start := time.Now()
+
+	// Record connection acquisition attempt
+	conn, err := p.pool.Acquire(ctx)
+	if err != nil {
+		duration := time.Since(start).Seconds()
+		metrics.RecordConnectionAcquisition("postgres", "error", duration)
+		return fmt.Errorf("failed to acquire connection: %w", err)
+	}
+	defer conn.Release()
+
+	duration := time.Since(start).Seconds()
+	metrics.RecordConnectionAcquisition("postgres", "success", duration)
+
 	query := `
 		INSERT INTO storage_data (key, value, updated_at)
 		VALUES ($1, $2, NOW())
@@ -149,7 +265,7 @@ func (p *PostgresBackend) Put(ctx context.Context, key string, value []byte) err
 		SET value = EXCLUDED.value, updated_at = NOW()
 	`
 
-	_, err := p.pool.Exec(ctx, query, key, value)
+	_, err = conn.Exec(ctx, query, key, value)
 	if err != nil {
 		return fmt.Errorf("failed to put value: %w", err)
 	}
@@ -177,8 +293,22 @@ func (p *PostgresBackend) Delete(ctx context.Context, key string) error {
 //
 //nolint:revive // ctx parameter is required by Backend interface
 func (p *PostgresBackend) List(ctx context.Context, prefix string) ([]string, error) {
+	start := time.Now()
+
+	// Record connection acquisition attempt
+	conn, err := p.pool.Acquire(ctx)
+	if err != nil {
+		duration := time.Since(start).Seconds()
+		metrics.RecordConnectionAcquisition("postgres", "error", duration)
+		return nil, fmt.Errorf("failed to acquire connection: %w", err)
+	}
+	defer conn.Release()
+
+	duration := time.Since(start).Seconds()
+	metrics.RecordConnectionAcquisition("postgres", "success", duration)
+
 	query := "SELECT key FROM storage_data WHERE key LIKE $1 ORDER BY key"
-	rows, err := p.pool.Query(ctx, query, prefix+"%")
+	rows, err := conn.Query(ctx, query, prefix+"%")
 	if err != nil {
 		return nil, fmt.Errorf("failed to list keys: %w", err)
 	}
@@ -211,6 +341,20 @@ func (p *PostgresBackend) Close() error {
 //nolint:revive // ctx parameter is required by Backend interface
 func (p *PostgresBackend) Ping(ctx context.Context) error {
 	return p.pool.Ping(ctx)
+}
+
+// collectMetricsPeriodically collects connection pool metrics periodically
+func (p *PostgresBackend) collectMetricsPeriodically() {
+	ticker := time.NewTicker(30 * time.Second) // Collect metrics every 30 seconds
+	defer ticker.Stop()
+
+	for range ticker.C {
+		stats := p.pool.Stat()
+		metrics.RecordConnectionPoolStats("postgres",
+			p.pool.Config().MaxConns,
+			stats.TotalConns(),
+			stats.IdleConns())
+	}
 }
 
 // Begin starts a new transaction
