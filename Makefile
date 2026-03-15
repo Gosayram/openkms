@@ -1,4 +1,4 @@
-.PHONY: help build test fmt lint vet clean run deps tidy update install-tools check-all fix-all tag push-tag release set-go-version
+.PHONY: help build test fmt lint vet clean run deps tidy update install-tools check-all fix-all tag push-tag release set-go-version spiffe-entry-gate
 
 # Version information
 VERSION_FILE := .release-version
@@ -33,6 +33,10 @@ build: ## Build the application
 
 test: ## Run tests
 	go test -v -race -coverprofile=coverage.out ./...
+
+spiffe-entry-gate: ## Run SPIFFE 3.6 entry-gate integration and e2e baseline tests
+	go test -v -count=1 -tags=integration ./internal/authn -run '^TestSPIFFEEntryGateIntegration_'
+	go test -v -count=1 -tags=e2e ./internal/authn -run '^TestSPIFFEEntryGateE2E_'
 
 test-coverage: test ## Run tests with coverage report
 	go tool cover -html=coverage.out -o coverage.html
