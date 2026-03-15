@@ -162,7 +162,10 @@ Licensed under the Apache License, Version 2.0. See [LICENSE](#LICENSE) file for
 
 This is a skeleton project. Contributions, improvements, and feedback are welcome. 
 
+## Security
+
+Please report vulnerabilities through the private channel described in [SECURITY.md](SECURITY.md).
+
 ## Repository
 
 https://github.com/Gosayram/openkms
-
