@@ -32,6 +32,7 @@ security:
     spiffe:
       trust_domain: "example.org"
       workload_socket: "/tmp/spire-agent/public/api.sock"
+      strict: true
       # Optional: Provide trust bundle files instead of workload API
       # bundle_paths:
       #   - "/etc/spiffe/trust-bundle.pem"

@@ -21,6 +21,7 @@ security:
     spiffe:
       trust_domain: "example.org"
       workload_socket: "/tmp/spire-agent/public/api.sock"
+      strict: true
 ```
 
 ### 2. SPIFFE with Trust Bundle Files
@@ -47,6 +48,7 @@ security:
 export OPENKMS_AUTH_PROVIDERS=static,mtls,spiffe
 export OPENKMS_SPIFFE_TRUST_DOMAIN=example.org
 export OPENKMS_SPIFFE_WORKLOAD_SOCKET=/tmp/spire-agent/public/api.sock
+export OPENKMS_SPIFFE_STRICT=true
 ```
 
 ### 4. Docker Compose with SPIRE

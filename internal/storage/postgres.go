@@ -1,4 +1,4 @@
-// Copyright 2025 Gosayram Contributors
+// Copyright 2026 Gosayram Contributors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -17,11 +17,13 @@ package storage
 
 import (
 	"context"
+	"crypto/rand"
 	"fmt"
-	"math/rand"
+	"math/big"
 	"time"
 
 	"github.com/Gosayram/openkms/internal/metrics"
+
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -98,6 +100,8 @@ type PostgresConfig struct {
 }
 
 // NewPostgresBackend creates a new PostgreSQL-based storage backend
+//
+//nolint:funlen // initialization sequence is intentionally explicit for operational clarity
 func NewPostgresBackend(config PostgresConfig) (*PostgresBackend, error) {
 	// Parse connection string
 	pgxConfig, err := pgxpool.ParseConfig(config.ConnectionString)
@@ -130,7 +134,10 @@ func NewPostgresBackend(config PostgresConfig) (*PostgresBackend, error) {
 	}
 	if jitter > 0 {
 		// Add random jitter up to the specified duration
-		jitterAmount := time.Duration(rand.Int63n(int64(jitter)))
+		jitterAmount, jitterErr := randomDurationLessThan(jitter)
+		if jitterErr != nil {
+			return nil, fmt.Errorf("failed to generate connection lifetime jitter: %w", jitterErr)
+		}
 		connMaxLifetime += jitterAmount
 	}
 	pgxConfig.MaxConnLifetime = connMaxLifetime
@@ -157,20 +164,14 @@ func NewPostgresBackend(config PostgresConfig) (*PostgresBackend, error) {
 		pgxConfig.ConnConfig.ConnectTimeout = connTimeout
 	}
 
-	// Configure connection callbacks for better monitoring
-	pgxConfig.BeforeAcquire = func(ctx context.Context, conn *pgx.Conn) bool {
-		// This is called before a connection is acquired from the pool
-		// Return false to reject the connection
-		return true
-	}
-
-	pgxConfig.AfterConnect = func(ctx context.Context, conn *pgx.Conn) error {
+	// Configure connection callbacks for better monitoring.
+	pgxConfig.AfterConnect = func(_ context.Context, _ *pgx.Conn) error {
 		// This is called after a new connection is established
 		// Can be used for connection-specific setup
 		return nil
 	}
 
-	pgxConfig.BeforeClose = func(conn *pgx.Conn) {
+	pgxConfig.BeforeClose = func(_ *pgx.Conn) {
 		// This is called before a connection is closed
 		// Can be used for cleanup
 	}
@@ -345,7 +346,7 @@ func (p *PostgresBackend) Ping(ctx context.Context) error {
 
 // collectMetricsPeriodically collects connection pool metrics periodically
 func (p *PostgresBackend) collectMetricsPeriodically() {
-	ticker := time.NewTicker(30 * time.Second) // Collect metrics every 30 seconds
+	ticker := time.NewTicker(defaultHealthCheckPeriod)
 	defer ticker.Stop()
 
 	for range ticker.C {
@@ -355,6 +356,19 @@ func (p *PostgresBackend) collectMetricsPeriodically() {
 			stats.TotalConns(),
 			stats.IdleConns())
 	}
+}
+
+func randomDurationLessThan(limit time.Duration) (time.Duration, error) {
+	if limit <= 0 {
+		return 0, nil
+	}
+
+	n, err := rand.Int(rand.Reader, big.NewInt(limit.Nanoseconds()))
+	if err != nil {
+		return 0, err
+	}
+
+	return time.Duration(n.Int64()), nil
 }
 
 // Begin starts a new transaction

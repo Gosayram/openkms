@@ -1,4 +1,4 @@
-// Copyright 2025 Gosayram Contributors
+// Copyright 2026 Gosayram Contributors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -305,6 +305,7 @@ func initializeAuth(cfg *config.Config, logger *zap.Logger) *authn.Manager {
 			TrustDomain:    cfg.Security.Auth.SPIFFE.TrustDomain,
 			BundlePaths:    cfg.Security.Auth.SPIFFE.BundlePaths,
 			WorkloadSocket: cfg.Security.Auth.SPIFFE.WorkloadSocket,
+			Strict:         cfg.Security.Auth.SPIFFE.Strict,
 		}
 
 		spiffeProvider, err := authn.NewSPIFFEProvider(spiffeConfig)
@@ -314,7 +315,8 @@ func initializeAuth(cfg *config.Config, logger *zap.Logger) *authn.Manager {
 
 		providers = append(providers, spiffeProvider)
 		logger.Info("SPIFFE authentication provider enabled",
-			zap.String("trust_domain", cfg.Security.Auth.SPIFFE.TrustDomain))
+			zap.String("trust_domain", cfg.Security.Auth.SPIFFE.TrustDomain),
+			zap.Bool("strict", cfg.Security.Auth.SPIFFE.Strict))
 	}
 
 	// Create auth manager with configured providers

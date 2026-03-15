@@ -1,4 +1,4 @@
-// Copyright 2025 Gosayram Contributors
+// Copyright 2026 Gosayram Contributors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -38,19 +38,26 @@ func Middleware(manager *Manager, logger *zap.Logger, requireAuth bool) func(htt
 
 			var identity *Identity
 			var err error
+			spiffeProvider, hasSPIFFE := manager.SPIFFEProvider()
 
 			// Try SPIFFE authentication first if available and mTLS is present
 			if r.TLS != nil && len(r.TLS.PeerCertificates) > 0 {
-				// Check if we have a SPIFFE provider in the manager
-				for _, provider := range manager.providers {
-					if spiffeProvider, ok := provider.(*SPIFFEProvider); ok {
-						identity, err = spiffeProvider.AuthenticateFromRequest(r)
-						if err == nil {
-							// Set identity in context
-							ctx := WithIdentity(r.Context(), identity)
-							next.ServeHTTP(w, r.WithContext(ctx))
-							return
-						}
+				if hasSPIFFE {
+					identity, err = spiffeProvider.AuthenticateFromRequest(r)
+					if err == nil {
+						ctx := WithIdentity(r.Context(), identity)
+						next.ServeHTTP(w, r.WithContext(ctx))
+						return
+					}
+
+					if spiffeProvider.IsStrict() {
+						logger.Warn("Strict SPIFFE authentication failed",
+							zap.String("path", r.URL.Path),
+							zap.String("method", r.Method),
+							zap.Error(err),
+						)
+						http.Error(w, "Unauthorized", http.StatusUnauthorized)
+						return
 					}
 				}
 
@@ -63,6 +70,21 @@ func Middleware(manager *Manager, logger *zap.Logger, requireAuth bool) func(htt
 					next.ServeHTTP(w, r.WithContext(ctx))
 					return
 				}
+			}
+
+			// Strict SPIFFE mode does not allow token fallback.
+			if hasSPIFFE && spiffeProvider.IsStrict() {
+				if requireAuth {
+					logger.Warn("Strict SPIFFE mode requires valid SPIFFE certificate",
+						zap.String("path", r.URL.Path),
+						zap.String("method", r.Method),
+					)
+					http.Error(w, "Unauthorized", http.StatusUnauthorized)
+					return
+				}
+
+				next.ServeHTTP(w, r)
+				return
 			}
 
 			// Try token authentication

@@ -1,4 +1,4 @@
-// Copyright 2025 Gosayram Contributors
+// Copyright 2026 Gosayram Contributors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -204,7 +204,7 @@ func (le *PostgresLeaderElection) campaignWithAdvisoryLock(ctx context.Context) 
 
 	// Start refresh goroutine
 	le.refreshWg.Add(1)
-	go le.refreshAdvisoryLock()
+	go le.refreshAdvisoryLock(ctx)
 
 	return nil
 }
@@ -245,7 +245,7 @@ func (le *PostgresLeaderElection) campaignWithLeaderTable(ctx context.Context) e
 			}
 			// Start refresh goroutine
 			le.refreshWg.Add(1)
-			go le.refreshLeaderTable()
+			go le.refreshLeaderTable(ctx)
 			return nil
 		}
 
@@ -261,13 +261,13 @@ func (le *PostgresLeaderElection) campaignWithLeaderTable(ctx context.Context) e
 
 	// Start refresh goroutine
 	le.refreshWg.Add(1)
-	go le.refreshLeaderTable()
+	go le.refreshLeaderTable(ctx)
 
 	return nil
 }
 
 // refreshAdvisoryLock refreshes the advisory lock periodically
-func (le *PostgresLeaderElection) refreshAdvisoryLock() {
+func (le *PostgresLeaderElection) refreshAdvisoryLock(parentCtx context.Context) {
 	defer le.refreshWg.Done()
 
 	ticker := time.NewTicker(le.refreshInterval)
@@ -289,7 +289,7 @@ func (le *PostgresLeaderElection) refreshAdvisoryLock() {
 
 			// Check if we still hold the lock
 			var locked bool
-			ctx, cancel := context.WithTimeout(context.Background(), defaultLeaderTimeout)
+			ctx, cancel := context.WithTimeout(parentCtx, defaultLeaderTimeout)
 			err := le.pool.QueryRow(ctx, "SELECT pg_try_advisory_lock($1)", le.lockID).Scan(&locked)
 			cancel()
 
@@ -309,7 +309,7 @@ func (le *PostgresLeaderElection) refreshAdvisoryLock() {
 }
 
 // refreshLeaderTable refreshes the leader table entry periodically
-func (le *PostgresLeaderElection) refreshLeaderTable() {
+func (le *PostgresLeaderElection) refreshLeaderTable(parentCtx context.Context) {
 	defer le.refreshWg.Done()
 
 	ticker := time.NewTicker(le.refreshInterval)
@@ -333,7 +333,7 @@ func (le *PostgresLeaderElection) refreshLeaderTable() {
 			now := time.Now()
 			expiresAt := now.Add(time.Duration(le.ttl) * time.Second)
 
-			ctx, cancel := context.WithTimeout(context.Background(), defaultLeaderTimeout)
+			ctx, cancel := context.WithTimeout(parentCtx, defaultLeaderTimeout)
 			result, err := le.pool.Exec(ctx,
 				"UPDATE leader_election SET expires_at = $1 WHERE id = 'leader' AND node_id = $2",
 				expiresAt, le.nodeID,

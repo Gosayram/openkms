@@ -1,4 +1,4 @@
-// Copyright 2025 Gosayram Contributors
+// Copyright 2026 Gosayram Contributors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -32,6 +32,7 @@ import (
 type SPIFFEProvider struct {
 	trustDomain spiffeid.TrustDomain
 	bundle      *x509bundle.Bundle
+	strict      bool
 }
 
 // SPIFFEConfig holds configuration for SPIFFE authentication
@@ -40,6 +41,8 @@ type SPIFFEConfig struct {
 	BundlePaths []string `json:"bundle_paths" yaml:"bundle_paths"`
 	// WorkloadAPI socket path, defaults to default workload API endpoint
 	WorkloadSocket string `json:"workload_socket" yaml:"workload_socket"`
+	// Strict mode disables non-SPIFFE fallback paths in middleware.
+	Strict bool `json:"strict" yaml:"strict"`
 }
 
 // NewSPIFFEProvider creates a new SPIFFE authentication provider
@@ -59,6 +62,7 @@ func NewSPIFFEProvider(config *SPIFFEConfig) (*SPIFFEProvider, error) {
 
 	provider := &SPIFFEProvider{
 		trustDomain: trustDomain,
+		strict:      config.Strict,
 	}
 
 	// Try to initialize bundle from workload API first
@@ -108,8 +112,7 @@ func (s *SPIFFEProvider) AuthenticateFromRequest(r *http.Request) (*Identity, er
 		return nil, fmt.Errorf("no client certificate: %w", ErrUnauthorized)
 	}
 
-	cert := r.TLS.PeerCertificates[0]
-	return s.authenticateFromCertificate(cert)
+	return s.authenticateFromCertificates(r.TLS.PeerCertificates)
 }
 
 // Authenticate authenticates using token (not applicable for SPIFFE)
@@ -128,7 +131,13 @@ func (s *SPIFFEProvider) ValidateToken(ctx context.Context, token string) error 
 }
 
 // authenticateFromCertificate authenticates using X.509 certificate
-func (s *SPIFFEProvider) authenticateFromCertificate(cert *x509.Certificate) (*Identity, error) {
+func (s *SPIFFEProvider) authenticateFromCertificates(certs []*x509.Certificate) (*Identity, error) {
+	if len(certs) == 0 {
+		return nil, fmt.Errorf("no client certificate: %w", ErrUnauthorized)
+	}
+
+	cert := certs[0]
+
 	// Extract SPIFFE ID from certificate
 	spiffeID, err := x509svid.IDFromCert(cert)
 	if err != nil {
@@ -141,11 +150,12 @@ func (s *SPIFFEProvider) authenticateFromCertificate(cert *x509.Certificate) (*I
 			spiffeID.TrustDomain(), s.trustDomain, ErrUnauthorized)
 	}
 
-	// Verify the certificate using the trust bundle
+	// Verify certificate chain when trust bundle is available.
 	if s.bundle != nil {
-		// For now, we'll skip verification as it requires more complex setup
-		// In production, you should verify the certificate chain
-		// This is a simplified implementation for demonstration
+		verifyErr := s.verifyCertificateChain(certs)
+		if verifyErr != nil {
+			return nil, fmt.Errorf("SPIFFE certificate chain verification failed: %w", verifyErr)
+		}
 	}
 
 	// Extract SPIFFE ID components
@@ -193,9 +203,43 @@ func (s *SPIFFEProvider) authenticateFromCertificate(cert *x509.Certificate) (*I
 	}, nil
 }
 
+// authenticateFromCertificate authenticates using a leaf X.509 certificate.
+// This helper is retained for test compatibility.
+func (s *SPIFFEProvider) authenticateFromCertificate(cert *x509.Certificate) (*Identity, error) {
+	return s.authenticateFromCertificates([]*x509.Certificate{cert})
+}
+
+func (s *SPIFFEProvider) verifyCertificateChain(certs []*x509.Certificate) error {
+	roots := x509.NewCertPool()
+	for _, authority := range s.bundle.X509Authorities() {
+		roots.AddCert(authority)
+	}
+
+	intermediates := x509.NewCertPool()
+	for _, cert := range certs[1:] {
+		intermediates.AddCert(cert)
+	}
+
+	_, err := certs[0].Verify(x509.VerifyOptions{
+		Roots:         roots,
+		Intermediates: intermediates,
+		KeyUsages:     []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth},
+	})
+	if err != nil {
+		return fmt.Errorf("%w: %w", ErrUnauthorized, err)
+	}
+
+	return nil
+}
+
 // GetTrustDomain returns the configured trust domain
 func (s *SPIFFEProvider) GetTrustDomain() spiffeid.TrustDomain {
 	return s.trustDomain
+}
+
+// IsStrict returns true when provider is configured in strict SPIFFE mode.
+func (s *SPIFFEProvider) IsStrict() bool {
+	return s.strict
 }
 
 // IsWorkloadAPIAvailable checks if workload API is available

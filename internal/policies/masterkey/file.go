@@ -1,4 +1,4 @@
-// Copyright 2025 Gosayram Contributors
+// Copyright 2026 Gosayram Contributors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -24,6 +24,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 
 	"golang.org/x/crypto/pbkdf2"
 )
@@ -172,10 +173,7 @@ func (f *FileProvider) saveMasterKey(masterKey []byte) error {
 	encryptedHex := hex.EncodeToString(encrypted)
 
 	// Ensure directory exists
-	dir := os.Getenv("OPENKMS_DATA_DIR")
-	if dir == "" {
-		dir = "./data"
-	}
+	dir := resolveDataDir()
 	if err := os.MkdirAll(dir, defaultDirMode); err != nil {
 		return fmt.Errorf("failed to create directory: %w", err)
 	}
@@ -191,6 +189,15 @@ func (f *FileProvider) saveMasterKey(masterKey []byte) error {
 // SaveMasterKey is exported for factory use
 func (f *FileProvider) SaveMasterKey(masterKey []byte) error {
 	return f.saveMasterKey(masterKey)
+}
+
+func resolveDataDir() string {
+	dir := os.Getenv("OPENKMS_DATA_DIR")
+	if dir == "" {
+		dir = "./data"
+	}
+
+	return filepath.Clean(dir)
 }
 
 // WrapKey encrypts a key using the master key
