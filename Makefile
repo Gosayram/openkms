@@ -1,10 +1,12 @@
-.PHONY: help build test fmt lint vet clean run deps tidy update install-tools check-all fix-all tag push-tag release
+.PHONY: help build test fmt lint vet clean run deps tidy update install-tools check-all fix-all tag push-tag release set-go-version
 
 # Version information
 VERSION_FILE := .release-version
 VERSION := $(shell if [ -f $(VERSION_FILE) ]; then cat $(VERSION_FILE) | tr -d '[:space:]'; else echo "dev"; fi)
 COMMIT := $(shell git rev-parse --short HEAD 2>/dev/null || echo "unknown")
 DATE := $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
+# Go version used for go.mod `go` directive updates.
+GO_MOD_VERSION ?= 1.25.8
 
 # LDFLAGS for version injection
 LDFLAGS := -X 'github.com/Gosayram/openkms/internal/version.Version=$(VERSION)' \
@@ -67,6 +69,15 @@ deps: ## Download dependencies
 
 tidy: ## Tidy dependencies
 	go mod tidy
+
+set-go-version: ## Set go.mod Go version (override: GO_MOD_VERSION=1.25.8)
+	@if ! echo "$(GO_MOD_VERSION)" | grep -Eq '^[0-9]+\.[0-9]+(\.[0-9]+)?$$'; then \
+		echo "❌ Invalid GO_MOD_VERSION: $(GO_MOD_VERSION) (expected N.N or N.N.N)"; \
+		exit 1; \
+	fi
+	@echo "Setting go.mod Go version to $(GO_MOD_VERSION)..."
+	@go mod edit -go=$(GO_MOD_VERSION)
+	@echo "✅ Updated: $$(grep '^go ' go.mod)"
 
 update: ## Update all dependencies to latest versions and create commit
 	@./hack/update-deps.sh
