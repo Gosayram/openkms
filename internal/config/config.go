@@ -1,4 +1,4 @@
-// Copyright 2025 Gosayram Contributors
+// Copyright 2026 Gosayram Contributors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -113,13 +113,22 @@ type SecurityConfig struct {
 
 // AuthConfig contains authentication configuration
 type AuthConfig struct {
-	Providers        []string // "static", "mtls", "oidc"
+	Providers        []string // "static", "mtls", "oidc", "spiffe"
 	OIDCIssuer       string
 	OIDCClientID     string
 	OIDCClientSecret string
 	OIDCRedirectURL  string
 	OIDCScopes       []string
 	OIDCUserIDClaim  string
+	SPIFFE           SPIFFEConfig
+}
+
+// SPIFFEConfig contains SPIFFE authentication configuration
+type SPIFFEConfig struct {
+	TrustDomain    string   // SPIFFE trust domain (required)
+	BundlePaths    []string // Paths to trust bundle files (optional)
+	WorkloadSocket string   // Workload API socket path (optional)
+	Strict         bool     // Disable non-SPIFFE fallback auth paths
 }
 
 // LoggingConfig contains logging configuration
@@ -216,6 +225,12 @@ func Load() (*Config, error) {
 				OIDCRedirectURL:  getEnv("OPENKMS_OIDC_REDIRECT_URL", ""),
 				OIDCScopes:       getEnvSlice("OPENKMS_OIDC_SCOPES", []string{"openid", "profile", "email"}),
 				OIDCUserIDClaim:  getEnv("OPENKMS_OIDC_USER_ID_CLAIM", "sub"),
+				SPIFFE: SPIFFEConfig{
+					TrustDomain:    getEnv("OPENKMS_SPIFFE_TRUST_DOMAIN", ""),
+					BundlePaths:    getEnvSlice("OPENKMS_SPIFFE_BUNDLE_PATHS", []string{}),
+					WorkloadSocket: getEnv("OPENKMS_SPIFFE_WORKLOAD_SOCKET", ""),
+					Strict:         getEnvBool("OPENKMS_SPIFFE_STRICT", false),
+				},
 			},
 		},
 		Logging: LoggingConfig{

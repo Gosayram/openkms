@@ -1,4 +1,4 @@
-// Copyright 2025 Gosayram Contributors
+// Copyright 2026 Gosayram Contributors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -118,12 +118,32 @@ func validateConfig(cfg *config) error {
 		return fmt.Errorf("TOKEN not specified. Use -token or set OPENKMS_TOKEN")
 	}
 
+	cleanFilePath, err := validatePath(cfg.file)
+	if err != nil {
+		return fmt.Errorf("invalid input file path: %w", err)
+	}
+	cfg.file = cleanFilePath
+
+	cleanOutputPath, err := validatePath(cfg.output)
+	if err != nil {
+		return fmt.Errorf("invalid output file path: %w", err)
+	}
+	cfg.output = cleanOutputPath
+
 	// Check if file exists
 	if _, err := os.Stat(cfg.file); os.IsNotExist(err) {
 		return fmt.Errorf("file not found: %s", cfg.file)
 	}
 
 	return nil
+}
+
+func validatePath(path string) (string, error) {
+	cleanPath := filepath.Clean(path)
+	if cleanPath != path && cleanPath != filepath.Base(path) {
+		return "", fmt.Errorf("path traversal is not allowed: %s", path)
+	}
+	return cleanPath, nil
 }
 
 // signArtifact signs the artifact using OpenKMS
@@ -164,6 +184,7 @@ func signArtifact(cfg *config) error {
 	signatureJSON := createCosignSignature(signature, fileData)
 
 	// Write signature to file
+	//nolint:gosec // cfg.output is validated by validatePath before this write.
 	if err := os.WriteFile(cfg.output, signatureJSON, signatureFileMode); err != nil {
 		return fmt.Errorf("failed to write signature: %w", err)
 	}

@@ -1,4 +1,4 @@
-// Copyright 2025 Gosayram Contributors
+// Copyright 2026 Gosayram Contributors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -77,4 +77,15 @@ func (m *Manager) ValidateToken(ctx context.Context, token string) error {
 	}
 
 	return ErrInvalidToken
+}
+
+// SPIFFEProvider returns the configured SPIFFE provider (if any).
+func (m *Manager) SPIFFEProvider() (*SPIFFEProvider, bool) {
+	for _, provider := range m.providers {
+		if spiffeProvider, ok := provider.(*SPIFFEProvider); ok {
+			return spiffeProvider, true
+		}
+	}
+
+	return nil, false
 }
