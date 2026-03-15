@@ -184,8 +184,6 @@ func (f *FileBackend) Begin(ctx context.Context) (Transaction, error) {
 }
 
 // Get retrieves a value by key within the transaction
-//
-//nolint:revive // ctx parameter is required by Transaction interface
 func (t *FileTransaction) Get(ctx context.Context, key string) ([]byte, error) {
 	return t.backend.Get(ctx, key)
 }

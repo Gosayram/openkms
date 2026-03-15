@@ -115,17 +115,9 @@ func NewOIDCProvider(ctx context.Context, config *OIDCConfig) (*OIDCProvider, er
 // Authenticate authenticates a JWT token and returns identity
 func (o *OIDCProvider) Authenticate(ctx context.Context, token string) (*Identity, error) {
 	// Check cache first
-	o.mu.RLock()
-	if cached, ok := o.tokenCache[token]; ok {
-		if time.Now().Before(cached.expiresAt) {
-			identity := cached.identity
-			o.mu.RUnlock()
-			return identity, nil
-		}
-		// Cache expired, remove it
-		delete(o.tokenCache, token)
+	if cached, ok := o.getCachedToken(token); ok {
+		return cached.identity, nil
 	}
-	o.mu.RUnlock()
 
 	// Verify token
 	idToken, err := o.verifier.Verify(ctx, token)
@@ -160,17 +152,15 @@ func (o *OIDCProvider) Authenticate(ctx context.Context, token string) (*Identit
 	}
 
 	// Cache token
-	o.mu.Lock()
 	expiresAt := idToken.Expiry
 	if expiresAt.IsZero() {
 		expiresAt = time.Now().Add(o.cacheTimeout)
 	}
-	o.tokenCache[token] = &cachedToken{
+	o.setCachedToken(token, &cachedToken{
 		identity:    identity,
 		expiresAt:   expiresAt,
 		validatedAt: time.Now(),
-	}
-	o.mu.Unlock()
+	})
 
 	// Cleanup old cache entries periodically
 	go o.cleanupCache()
@@ -181,15 +171,9 @@ func (o *OIDCProvider) Authenticate(ctx context.Context, token string) (*Identit
 // ValidateToken validates a JWT token without full authentication
 func (o *OIDCProvider) ValidateToken(ctx context.Context, token string) error {
 	// Check cache first
-	o.mu.RLock()
-	if cached, ok := o.tokenCache[token]; ok {
-		if time.Now().Before(cached.expiresAt) {
-			o.mu.RUnlock()
-			return nil
-		}
-		delete(o.tokenCache, token)
+	if _, ok := o.getCachedToken(token); ok {
+		return nil
 	}
-	o.mu.RUnlock()
 
 	// Verify token
 	_, err := o.verifier.Verify(ctx, token)
@@ -229,6 +213,40 @@ func (o *OIDCProvider) cleanupCache() {
 			delete(o.tokenCache, token)
 		}
 	}
+}
+
+func (o *OIDCProvider) setCachedToken(token string, cached *cachedToken) {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	o.tokenCache[token] = cached
+}
+
+func (o *OIDCProvider) getCachedToken(token string) (*cachedToken, bool) {
+	o.mu.RLock()
+	cached, ok := o.tokenCache[token]
+	o.mu.RUnlock()
+	if !ok {
+		return nil, false
+	}
+
+	now := time.Now()
+	if now.Before(cached.expiresAt) {
+		return cached, true
+	}
+
+	// Expired entries are removed under write lock to avoid map write under RLock.
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	cached, ok = o.tokenCache[token]
+	if !ok {
+		return nil, false
+	}
+	if time.Now().After(cached.expiresAt) {
+		delete(o.tokenCache, token)
+		return nil, false
+	}
+
+	return cached, true
 }
 
 // generateState generates a random state string for OAuth2

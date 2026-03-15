@@ -74,7 +74,6 @@ func readData(file, data string) ([]byte, error) {
 		if cleanPath != file && cleanPath != filepath.Base(file) {
 			return nil, fmt.Errorf("invalid file path: %s", file)
 		}
-		//nolint:gosec // file path is validated above and controlled by user input
 		return os.ReadFile(cleanPath)
 	}
 	if data != "" {
@@ -86,8 +85,6 @@ func readData(file, data string) ([]byte, error) {
 
 // runCryptoOperation is a helper function that executes a cryptographic operation
 // with common error handling and data reading logic.
-//
-//nolint:lll // function signature with callback is necessarily long
 func runCryptoOperation(
 	cli *CLI,
 	file, data, keyID string,
@@ -373,7 +370,6 @@ type SignCmd struct {
 
 // Run executes the sign command
 func (s *SignCmd) Run() error {
-	//nolint:lll // callback function signature is necessarily long
 	return runCryptoOperation(s.CLI, s.File, s.Data, s.KeyID, func(
 		ctx context.Context,
 		client *sdk.Client,
@@ -425,11 +421,14 @@ func (v *VerifyCmd) Run() error {
 
 	if resp.Valid {
 		fmt.Println("Signature is valid")
-		os.Exit(0)
+		return exitWithCode(0)
 	}
 	fmt.Println("Signature is invalid")
-	os.Exit(1)
-	//nolint:unreachable // os.Exit above prevents reaching here
+	return exitWithCode(1)
+}
+
+func exitWithCode(code int) error {
+	os.Exit(code)
 	return nil
 }
 
@@ -443,7 +442,6 @@ type HMACCmd struct {
 
 // Run executes the HMAC command
 func (h *HMACCmd) Run() error {
-	//nolint:lll // callback function signature is necessarily long
 	return runCryptoOperation(h.CLI, h.File, h.Data, h.KeyID, func(
 		ctx context.Context,
 		client *sdk.Client,

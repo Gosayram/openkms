@@ -14,16 +14,48 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `Fixed` for any bug fixes.
 - `Security` in case of vulnerabilities.
 
+## [Unreleased]
+
+### Added
+- SPIFFE auth integration; (#53)
+
+### Changed
+- Bump actions/checkout from 5.0.0 to 5.0.1
+- Bump actions/checkout from 5.0.1 to 6.0.0
+- Bump actions/checkout from 6.0.0 to 6.0.2 (#47)
+- Bump actions/setup-go from 6.0.0 to 6.1.0
+- Bump actions/setup-go from 6.1.0 to 6.2.0 (#44)
+- Bump docker/build-push-action from 6.18.0 to 6.19.1 (#51)
+- Bump docker/login-action from 3.6.0 to 3.7.0 (#50)
+- Bump docker/setup-buildx-action from 3.11.1 to 3.12.0 (#42)
+- Bump github.com/coreos/go-oidc/v3 from 3.16.0 to 3.17.0
+- Bump github.com/sigstore/sigstore
+- Bump gitignore with cache and build dirs
+- Bump go.uber.org/zap from 1.27.0 to 1.27.1
+- Bump golang from 1.25 to 1.26 in /deploy (#52)
+- Bump golang.org/x/crypto from 0.44.0 to 0.45.0
+- Linter config, refactor OIDC caching, and improve TLS handling
+- Merge pull request #29 from Gosayram/dependabot/github_actions/actions/checkout-5.0.1
+- Merge pull request #30 from Gosayram/dependabot/go_modules/github.com/sigstore/sigstore-1.10.0
+- Merge pull request #31 from Gosayram/dependabot/go_modules/golang.org/x/crypto-0.45.0
+- Merge pull request #32 from Gosayram/dependabot/github_actions/actions/setup-go-6.1.0
+- Merge pull request #33 from Gosayram/dependabot/github_actions/actions/checkout-6.0.0
+- Merge pull request #34 from Gosayram/dependabot/go_modules/go.uber.org/zap-1.27.1
+- Merge pull request #35 from Gosayram/dependabot/go_modules/github.com/coreos/go-oidc/v3-3.17.0
+
+### Security
+- Add security policy and readme reference; (#54)
+
 ## [0.3.6] - 2025-11-15
 
 ### Added
 - Add ABAC support for authorization #16
 - Add CI/CD integration examples for artifact signing
-- Add multi-tenant policies support
 - Add PKCS#11 and TPM 2.0 support for master key providers
+- Add multi-tenant policies support
 - Add verification utilities for Cosign signatures
-- Implement artifact signature format for Cosign v3
 - Implement Cosign v3+ compatible artifact signing
+- Implement artifact signature format for Cosign v3
 - Implement policy inheritance for RBAC and ABAC
 
 ### Changed

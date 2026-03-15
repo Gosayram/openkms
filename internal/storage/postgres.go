@@ -212,8 +212,6 @@ func NewPostgresBackend(config PostgresConfig) (*PostgresBackend, error) {
 }
 
 // Get retrieves a value by key
-//
-//nolint:revive // ctx parameter is required by Backend interface
 func (p *PostgresBackend) Get(ctx context.Context, key string) ([]byte, error) {
 	start := time.Now()
 
@@ -242,8 +240,6 @@ func (p *PostgresBackend) Get(ctx context.Context, key string) ([]byte, error) {
 }
 
 // Put stores a value with the given key
-//
-//nolint:revive // ctx parameter is required by Backend interface
 func (p *PostgresBackend) Put(ctx context.Context, key string, value []byte) error {
 	start := time.Now()
 
@@ -275,8 +271,6 @@ func (p *PostgresBackend) Put(ctx context.Context, key string, value []byte) err
 }
 
 // Delete removes a key-value pair
-//
-//nolint:revive // ctx parameter is required by Backend interface
 func (p *PostgresBackend) Delete(ctx context.Context, key string) error {
 	result, err := p.pool.Exec(ctx, "DELETE FROM storage_data WHERE key = $1", key)
 	if err != nil {
@@ -291,8 +285,6 @@ func (p *PostgresBackend) Delete(ctx context.Context, key string) error {
 }
 
 // List returns all keys with the given prefix
-//
-//nolint:revive // ctx parameter is required by Backend interface
 func (p *PostgresBackend) List(ctx context.Context, prefix string) ([]string, error) {
 	start := time.Now()
 
@@ -338,8 +330,6 @@ func (p *PostgresBackend) Close() error {
 }
 
 // Ping checks if the backend is available
-//
-//nolint:revive // ctx parameter is required by Backend interface
 func (p *PostgresBackend) Ping(ctx context.Context) error {
 	return p.pool.Ping(ctx)
 }
@@ -372,8 +362,6 @@ func randomDurationLessThan(limit time.Duration) (time.Duration, error) {
 }
 
 // Begin starts a new transaction
-//
-//nolint:revive // ctx parameter is required by TransactionalBackend interface
 func (p *PostgresBackend) Begin(ctx context.Context) (Transaction, error) {
 	tx, err := p.pool.Begin(ctx)
 	if err != nil {
@@ -391,8 +379,6 @@ type PostgresTransaction struct {
 }
 
 // Get retrieves a value by key within the transaction
-//
-//nolint:revive // ctx parameter is required by Transaction interface
 func (pt *PostgresTransaction) Get(ctx context.Context, key string) ([]byte, error) {
 	var value []byte
 
@@ -408,8 +394,6 @@ func (pt *PostgresTransaction) Get(ctx context.Context, key string) ([]byte, err
 }
 
 // Put stores a value with the given key within the transaction
-//
-//nolint:revive // ctx parameter is required by Transaction interface
 func (pt *PostgresTransaction) Put(ctx context.Context, key string, value []byte) error {
 	query := `
 		INSERT INTO storage_data (key, value, updated_at)
@@ -427,8 +411,6 @@ func (pt *PostgresTransaction) Put(ctx context.Context, key string, value []byte
 }
 
 // Delete removes a key-value pair within the transaction
-//
-//nolint:revive // ctx parameter is required by Transaction interface
 func (pt *PostgresTransaction) Delete(ctx context.Context, key string) error {
 	result, err := pt.tx.Exec(ctx, "DELETE FROM storage_data WHERE key = $1", key)
 	if err != nil {

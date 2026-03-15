@@ -201,8 +201,6 @@ func isRetryableError(err error) bool {
 }
 
 // Get retrieves a value by key
-//
-//nolint:revive // ctx parameter is required by Backend interface
 func (e *EtcdBackend) Get(ctx context.Context, key string) ([]byte, error) {
 	e.mu.RLock()
 	defer e.mu.RUnlock()
@@ -234,8 +232,6 @@ func (e *EtcdBackend) Get(ctx context.Context, key string) ([]byte, error) {
 }
 
 // Put stores a value with the given key
-//
-//nolint:revive // ctx parameter is required by Backend interface
 func (e *EtcdBackend) Put(ctx context.Context, key string, value []byte) error {
 	e.mu.RLock()
 	defer e.mu.RUnlock()
@@ -261,8 +257,6 @@ func (e *EtcdBackend) Put(ctx context.Context, key string, value []byte) error {
 }
 
 // Delete removes a key-value pair
-//
-//nolint:revive // ctx parameter is required by Backend interface
 func (e *EtcdBackend) Delete(ctx context.Context, key string) error {
 	e.mu.RLock()
 	defer e.mu.RUnlock()
@@ -294,8 +288,6 @@ func (e *EtcdBackend) Delete(ctx context.Context, key string) error {
 }
 
 // List returns all keys with the given prefix
-//
-//nolint:revive // ctx parameter is required by Backend interface
 func (e *EtcdBackend) List(ctx context.Context, prefix string) ([]string, error) {
 	e.mu.RLock()
 	defer e.mu.RUnlock()
@@ -345,8 +337,6 @@ func (e *EtcdBackend) Close() error {
 }
 
 // Ping checks if the backend is available
-//
-//nolint:revive // ctx parameter is required by Backend interface
 func (e *EtcdBackend) Ping(ctx context.Context) error {
 	e.mu.RLock()
 	defer e.mu.RUnlock()
@@ -363,8 +353,6 @@ func (e *EtcdBackend) Ping(ctx context.Context) error {
 }
 
 // Begin starts a new transaction
-//
-//nolint:revive // ctx parameter is required by TransactionalBackend interface
 func (e *EtcdBackend) Begin(ctx context.Context) (Transaction, error) {
 	e.mu.RLock()
 	defer e.mu.RUnlock()
@@ -401,8 +389,6 @@ type etcdOperation struct {
 }
 
 // Get retrieves a value by key within the transaction
-//
-//nolint:revive // ctx parameter is required by Transaction interface
 func (et *EtcdTransaction) Get(ctx context.Context, key string) ([]byte, error) {
 	if et.committed || et.rolledBack {
 		return nil, fmt.Errorf("transaction is already committed or rolled back")
