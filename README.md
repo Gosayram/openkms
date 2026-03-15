@@ -65,7 +65,7 @@ This is a skeleton implementation. The project provides a solid foundation with 
 
 ### Prerequisites
 
-- Go 1.25 or later
+- Go 1.26 or later
 - Make (for build automation)
 
 ### Building
@@ -77,6 +77,26 @@ make build
 This will build both the server (`openkms-server`) and CLI (`openkms-cli`) binaries in the `bin/` directory.
 
 For more build options, see the `Makefile` or run `make help`.
+
+### Local Quick Start (Development)
+
+By default, the server expects TLS certificates. For a local development run, you can disable TLS and use an in-memory-style bootstrap with environment-based master key:
+
+```bash
+export OPENKMS_TLS_ENABLED=false
+export OPENKMS_AUTH_PROVIDERS=static
+export OPENKMS_MASTER_KEY_PROVIDER=env
+export OPENKMS_MASTER_KEY=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+
+make build
+./bin/openkms-server
+```
+
+In another terminal:
+
+```bash
+./bin/openkms-cli --help
+```
 
 ### Running the Server
 
@@ -120,6 +140,12 @@ Quick example:
 make test
 ```
 
+Run local quality checks:
+
+```bash
+make check-all
+```
+
 Run tests with coverage:
 
 ```bash
@@ -127,6 +153,31 @@ make test-coverage
 ```
 
 This will generate a coverage report to help ensure code quality and test completeness.
+
+## Release Process
+
+Releases are tag-driven.
+
+1. Update `.release-version` (for example `0.3.7`).
+2. Run:
+
+```bash
+make release
+```
+
+This updates `CHANGELOG.md`, creates tag `v<version>`, and pushes it.
+
+On tag push, GitHub Actions workflow [`.github/workflows/release.yml`](.github/workflows/release.yml) will:
+
+- build and publish signed binaries with GoReleaser
+- build and push container images to GHCR (`server`, `cli`, `server-slim`)
+- sign container images with Cosign
+
+GoReleaser details are defined in [`.goreleaser.yaml`](.goreleaser.yaml).
+
+## Code Scanning
+
+CodeQL is configured in [`.github/workflows/codeql.yml`](.github/workflows/codeql.yml) with advanced setup and custom config in [`.github/codeql/codeql-config.yml`](.github/codeql/codeql-config.yml).
 
 ## Project Structure
 
@@ -162,7 +213,10 @@ Licensed under the Apache License, Version 2.0. See [LICENSE](#LICENSE) file for
 
 This is a skeleton project. Contributions, improvements, and feedback are welcome. 
 
+## Security
+
+Please report vulnerabilities through the private channel described in [SECURITY.md](SECURITY.md).
+
 ## Repository
 
 https://github.com/Gosayram/openkms
-
