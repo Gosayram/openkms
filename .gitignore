@@ -53,3 +53,7 @@ coverage.html
 
 # Vendor directory
 vendor/
+
+# Cache and build files
+*.cache/
+build/
