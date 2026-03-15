@@ -218,7 +218,7 @@ func (e *EnvelopeBackend) encryptWithDEK(ctx context.Context, key string, value 
 	ciphertext := aead.Seal(nonce, nonce, value, []byte(key))
 
 	// Combine: [4 bytes: wrapped DEK length][wrapped DEK][nonce + ciphertext]
-	const lengthFieldSize = 4 //nolint:mnd // 4 bytes for uint32 length field
+	const lengthFieldSize = 4
 	wrappedDEKLen := make([]byte, lengthFieldSize)
 	if len(wrappedDEK) > int(^uint32(0)) {
 		return fmt.Errorf("wrapped DEK too large: %d bytes", len(wrappedDEK))
@@ -238,7 +238,7 @@ func (e *EnvelopeBackend) encryptWithDEK(ctx context.Context, key string, value 
 // Format: [4 bytes: wrapped DEK length][wrapped DEK][nonce][ciphertext]
 func (e *EnvelopeBackend) decryptWithDEK(ctx context.Context, encrypted []byte, key string) ([]byte, error) {
 	// Extract wrapped DEK length
-	const lengthFieldSize = 4 //nolint:mnd // 4 bytes for uint32 length field
+	const lengthFieldSize = 4
 	if len(encrypted) < lengthFieldSize {
 		return nil, fmt.Errorf("encrypted data too short")
 	}

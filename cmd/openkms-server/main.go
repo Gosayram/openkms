@@ -74,7 +74,7 @@ func initializeConfigAndLogger() (*config.Config, *logging.Logger) {
 	cfg, err := config.Load()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to load configuration: %v\n", err)
-		os.Exit(1) //nolint:gocritic // exitAfterDefer - acceptable for configuration errors
+		os.Exit(1)
 	}
 
 	logger, err := logging.New(cfg.Logging.Level, cfg.Logging.Format, cfg.Logging.OutputPath)

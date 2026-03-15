@@ -17,9 +17,11 @@ package server
 import (
 	"context"
 	"crypto/tls"
+	"crypto/x509"
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"os"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -163,9 +165,7 @@ func (s *Server) Shutdown(ctx context.Context) error {
 	return s.httpServer.Shutdown(ctx)
 }
 
-// buildTLSConfig builds TLS configuration
-//
-//nolint:unparam // error return allows for future error handling
+// buildTLSConfig builds TLS configuration.
 func (s *Server) buildTLSConfig() (*tls.Config, error) {
 	tlsConfig := &tls.Config{
 		MinVersion: tls.VersionTLS13,
@@ -179,14 +179,35 @@ func (s *Server) buildTLSConfig() (*tls.Config, error) {
 
 	// Require client certificates if configured
 	if s.config.RequireClientCert {
-		tlsConfig.ClientAuth = tls.RequireAndVerifyClientCert
+		if s.config.TLSCACertFile == "" {
+			return nil, fmt.Errorf("TLS CA cert file is required when client certificates are enforced")
+		}
 
-		// CA cert will be loaded from the cert file
-		// In production, use proper CA certificate pool
-		_ = s.config.TLSCACertFile
+		clientCAs, err := loadClientCAs(s.config.TLSCACertFile)
+		if err != nil {
+			return nil, err
+		}
+
+		tlsConfig.ClientAuth = tls.RequireAndVerifyClientCert
+		tlsConfig.ClientCAs = clientCAs
 	}
 
 	return tlsConfig, nil
+}
+
+func loadClientCAs(caCertPath string) (*x509.CertPool, error) {
+	//nolint:gosec // CA path is explicitly provided via trusted server configuration.
+	caCertPEM, err := os.ReadFile(caCertPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read TLS CA cert file %q: %w", caCertPath, err)
+	}
+
+	clientCAs := x509.NewCertPool()
+	if ok := clientCAs.AppendCertsFromPEM(caCertPEM); !ok {
+		return nil, fmt.Errorf("failed to parse any certificates from TLS CA cert file %q", caCertPath)
+	}
+
+	return clientCAs, nil
 }
 
 // Router returns the chi router (for testing)

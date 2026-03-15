@@ -7,9 +7,12 @@ run:
   concurrency: 4
 
 linters:
+  # Keep linter set explicit to avoid implicit changes in "standard" defaults across releases.
+  default: none
   enable:
     - bodyclose
     - dupl
+    - errcheck
     - funlen
     - gochecknoinits
     - goconst
@@ -18,17 +21,18 @@ linters:
     - goprintffuncname
     - gosec
     - govet
+    - ineffassign
     - lll
     - misspell
     - mnd
     - nakedret
+    - nolintlint
     - revive
     - staticcheck
     - unconvert
     - unparam
+    - unused
     - whitespace
-  disable:
-    - depguard
   settings:
     dupl:
       threshold: 100

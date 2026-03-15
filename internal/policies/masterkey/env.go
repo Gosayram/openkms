@@ -69,8 +69,6 @@ func (e *EnvProvider) RotateMasterKey(ctx context.Context) ([]byte, error) {
 }
 
 // WrapKey encrypts a key using the master key
-//
-//nolint:revive // ctx parameter is required by Provider interface
 func (e *EnvProvider) WrapKey(ctx context.Context, key []byte) ([]byte, error) {
 	masterKey, err := e.GetMasterKey(ctx)
 	if err != nil {
@@ -81,8 +79,6 @@ func (e *EnvProvider) WrapKey(ctx context.Context, key []byte) ([]byte, error) {
 }
 
 // UnwrapKey decrypts a key using the master key
-//
-//nolint:revive // ctx parameter is required by Provider interface
 func (e *EnvProvider) UnwrapKey(ctx context.Context, wrappedKey []byte) ([]byte, error) {
 	masterKey, err := e.GetMasterKey(ctx)
 	if err != nil {

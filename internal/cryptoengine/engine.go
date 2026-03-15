@@ -100,7 +100,7 @@ func (e *CryptoEngine) GenerateKey(ctx context.Context, algorithm string) ([]byt
 
 // Encrypt encrypts plaintext using the given key and algorithm
 //
-//nolint:revive,gocritic // ctx parameter is required by Engine interface; paramTypeCombine would reduce readability
+//nolint:revive // ctx parameter is required by Engine interface; paramTypeCombine would reduce readability
 func (e *CryptoEngine) Encrypt(
 	ctx context.Context,
 	key []byte,
@@ -122,7 +122,7 @@ func (e *CryptoEngine) Encrypt(
 
 // Decrypt decrypts ciphertext using the given key and algorithm
 //
-//nolint:revive,lll // ctx parameter is required by Engine interface; function signature is necessarily long
+//nolint:revive // ctx parameter is required by Engine interface; function signature is necessarily long
 func (e *CryptoEngine) Decrypt(
 	ctx context.Context,
 	key []byte,
@@ -161,7 +161,7 @@ func (e *CryptoEngine) Sign(ctx context.Context, key []byte, algorithm string, d
 
 // Verify verifies a signature
 //
-//nolint:revive,gocritic // ctx parameter is required by Engine interface; paramTypeCombine would reduce readability
+//nolint:revive // ctx parameter is required by Engine interface; paramTypeCombine would reduce readability
 func (e *CryptoEngine) Verify(
 	ctx context.Context,
 	key []byte,
@@ -197,7 +197,7 @@ func (e *CryptoEngine) HMAC(ctx context.Context, key []byte, algorithm string, d
 
 // VerifyHMAC verifies an HMAC
 //
-//nolint:revive,gocritic // ctx parameter is required by Engine interface; paramTypeCombine would reduce readability
+//nolint:revive // ctx parameter is required by Engine interface; paramTypeCombine would reduce readability
 func (e *CryptoEngine) VerifyHMAC(
 	ctx context.Context,
 	key []byte,

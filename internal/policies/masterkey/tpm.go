@@ -59,7 +59,6 @@ func NewTPMProvider(config *TPMConfig) (*TPMProvider, error) {
 	}
 
 	// Open TPM device
-	//nolint:gosec // G304: TPM device path is validated and safe
 	rwc, err := os.OpenFile(config.TPMPath, os.O_RDWR, 0)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open TPM device %s: %w", config.TPMPath, err)
@@ -223,7 +222,7 @@ func (p *TPMProvider) WrapKey(ctx context.Context, key []byte) ([]byte, error) {
 	}
 
 	// Combine: [4 bytes: encrypted DEK length][encrypted DEK][wrapped key]
-	const lengthFieldSize = 4 //nolint:mnd // 4 bytes for uint32 length field
+	const lengthFieldSize = 4
 	encryptedDEKLen := make([]byte, lengthFieldSize)
 	if len(encryptedDEK) > int(^uint32(0)) {
 		return nil, fmt.Errorf("encrypted DEK too large: %d bytes", len(encryptedDEK))
@@ -248,7 +247,7 @@ func (p *TPMProvider) UnwrapKey(ctx context.Context, wrappedKey []byte) ([]byte,
 	defer p.mu.Unlock()
 
 	// Extract encrypted DEK length
-	const lengthFieldSize = 4 //nolint:mnd // 4 bytes for uint32 length field
+	const lengthFieldSize = 4
 	if len(wrappedKey) < lengthFieldSize {
 		return nil, fmt.Errorf("wrapped key too short: expected at least %d bytes, got %d", lengthFieldSize, len(wrappedKey))
 	}

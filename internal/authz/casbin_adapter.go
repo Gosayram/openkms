@@ -53,7 +53,6 @@ func (a *FileAdapter) LoadPolicy(m model.Model) error {
 		if line == "" || strings.HasPrefix(line, "#") {
 			continue
 		}
-		//nolint:errcheck // LoadPolicyLine errors are non-critical, continue loading other lines
 		_ = persist.LoadPolicyLine(line, m)
 	}
 
@@ -75,7 +74,6 @@ func (a *FileAdapter) SavePolicy(m model.Model) error {
 
 	writer := bufio.NewWriter(file)
 	defer func() {
-		//nolint:errcheck // best effort flush on defer
 		_ = writer.Flush()
 	}()
 
@@ -104,8 +102,6 @@ func (a *FileAdapter) SavePolicy(m model.Model) error {
 
 // AddPolicy adds a policy rule to the storage.
 // This is a no-op for file adapter as policies are saved via SavePolicy
-//
-//nolint:revive,gocritic,dupl // parameters are required by persist.Adapter interface, similar structure is intentional
 func (a *FileAdapter) AddPolicy(_, _ string, _ []string) error {
 	// File adapter doesn't support incremental updates
 	// Policies are saved via SavePolicy after all changes
@@ -114,8 +110,6 @@ func (a *FileAdapter) AddPolicy(_, _ string, _ []string) error {
 
 // RemovePolicy removes a policy rule from the storage.
 // This is a no-op for file adapter as policies are saved via SavePolicy
-//
-//nolint:revive,gocritic,dupl // parameters are required by persist.Adapter interface, similar structure is intentional
 func (a *FileAdapter) RemovePolicy(_, _ string, _ []string) error {
 	// File adapter doesn't support incremental updates
 	// Policies are saved via SavePolicy after all changes
@@ -124,8 +118,6 @@ func (a *FileAdapter) RemovePolicy(_, _ string, _ []string) error {
 
 // RemoveFilteredPolicy removes policy rules that match the filter from the storage.
 // This is a no-op for file adapter as policies are saved via SavePolicy
-//
-//nolint:revive,gocritic // parameters are required by persist.Adapter interface
 func (a *FileAdapter) RemoveFilteredPolicy(_, _ string, _ int, _ ...string) error {
 	// File adapter doesn't support incremental updates
 	// Policies are saved via SavePolicy after all changes

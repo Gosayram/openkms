@@ -12,6 +12,11 @@ LDFLAGS := -X 'github.com/Gosayram/openkms/internal/version.Version=$(VERSION)' 
            -X 'github.com/Gosayram/openkms/internal/version.Date=$(DATE)' \
            -s -w
 
+# Local cache paths (especially useful in restricted/sandboxed environments)
+CACHE_DIR ?= $(CURDIR)/.cache
+GO_BUILD_CACHE ?= $(CACHE_DIR)/go-build
+GOLANGCI_CACHE ?= $(CACHE_DIR)/golangci-lint
+
 help: ## Show this help message
 	@echo 'Usage: make [target]'
 	@echo ''
@@ -32,7 +37,8 @@ test-coverage: test ## Run tests with coverage report
 	@echo "Coverage report generated: coverage.html"
 
 fmt: ## Format code
-	go fmt ./...
+	@mkdir -p "$(GO_BUILD_CACHE)"
+	GOCACHE="$(GO_BUILD_CACHE)" go fmt ./...
 	@if command -v goimports > /dev/null; then \
 		goimports -w .; \
 	else \
@@ -41,7 +47,8 @@ fmt: ## Format code
 
 lint: ## Run linter
 	@if command -v golangci-lint > /dev/null; then \
-		golangci-lint run; \
+		mkdir -p "$(GO_BUILD_CACHE)" "$(GOLANGCI_CACHE)"; \
+		GOCACHE="$(GO_BUILD_CACHE)" GOLANGCI_LINT_CACHE="$(GOLANGCI_CACHE)" XDG_CACHE_HOME="$(CACHE_DIR)" golangci-lint run --allow-parallel-runners; \
 	else \
 		echo "golangci-lint not found, install with: make install-tools"; \
 	fi
@@ -84,7 +91,8 @@ check-all: copyright-check ## Run all checks (copyright, format, goimports, lint
 	fi
 	@echo "Running linter (golangci-lint)..."
 	@if command -v golangci-lint > /dev/null; then \
-		golangci-lint run; \
+		mkdir -p "$(GO_BUILD_CACHE)" "$(GOLANGCI_CACHE)"; \
+		GOCACHE="$(GO_BUILD_CACHE)" GOLANGCI_LINT_CACHE="$(GOLANGCI_CACHE)" XDG_CACHE_HOME="$(CACHE_DIR)" golangci-lint run --allow-parallel-runners; \
 		if [ $$? -eq 0 ]; then \
 			echo "✅ linter check passed"; \
 		else \
@@ -155,4 +163,3 @@ push-tag: tag ## Create tag and push to remote repository
 
 release: changelog push-tag ## Create release: update changelog, create tag and push
 	@echo "✅ Release $(VERSION) created and pushed"
-
