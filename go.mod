@@ -1,13 +1,13 @@
 module github.com/Gosayram/openkms
 
-go 1.25.6
+go 1.25.7
 
 require (
 	github.com/alecthomas/kong v1.14.0
 	github.com/casbin/casbin/v2 v2.135.0
 	github.com/coreos/go-oidc/v3 v3.17.0
 	github.com/go-chi/chi/v5 v5.2.5
-	github.com/google/go-containerregistry v0.21.2
+	github.com/google/go-containerregistry v0.21.3
 	github.com/google/go-tpm v0.9.8
 	github.com/jackc/pgx/v5 v5.8.0
 	github.com/miekg/pkcs11 v1.1.2
@@ -146,5 +146,6 @@ require (
 	google.golang.org/grpc v1.79.2 // indirect
 	google.golang.org/protobuf v1.36.11 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
+	gotest.tools/v3 v3.5.2 // indirect
 	k8s.io/klog/v2 v2.140.0 // indirect
 )
