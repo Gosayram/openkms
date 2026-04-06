@@ -7,7 +7,7 @@ require (
 	github.com/casbin/casbin/v2 v2.135.0
 	github.com/coreos/go-oidc/v3 v3.17.0
 	github.com/go-chi/chi/v5 v5.2.5
-	github.com/google/go-containerregistry v0.21.3
+	github.com/google/go-containerregistry v0.21.4
 	github.com/google/go-tpm v0.9.8
 	github.com/jackc/pgx/v5 v5.9.1
 	github.com/miekg/pkcs11 v1.1.2
@@ -41,8 +41,7 @@ require (
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
 	github.com/digitorus/pkcs7 v0.0.0-20250730155240-ffadbf3f398c // indirect
 	github.com/digitorus/timestamp v0.0.0-20250524132541-c45532741eea // indirect
-	github.com/docker/cli v29.3.0+incompatible // indirect
-	github.com/docker/distribution v2.8.3+incompatible // indirect
+	github.com/docker/cli v29.3.1+incompatible // indirect
 	github.com/docker/docker-credential-helpers v0.9.5 // indirect
 	github.com/dustin/go-humanize v1.0.1 // indirect
 	github.com/go-jose/go-jose/v4 v4.1.3 // indirect
@@ -86,7 +85,7 @@ require (
 	github.com/jackc/pgservicefile v0.0.0-20240606120523-5a60cdf6a761 // indirect
 	github.com/jackc/puddle/v2 v2.2.2 // indirect
 	github.com/jedisct1/go-minisign v0.0.0-20241212093149-d2f9f49435c7 // indirect
-	github.com/klauspost/compress v1.18.4 // indirect
+	github.com/klauspost/compress v1.18.5 // indirect
 	github.com/letsencrypt/boulder v0.20260309.0 // indirect
 	github.com/mitchellh/go-homedir v1.1.0 // indirect
 	github.com/moby/term v0.5.2 // indirect
